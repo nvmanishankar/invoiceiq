@@ -8,14 +8,21 @@ const STYLE: Record<StageStatus, { word: string; cls: string }> = {
   info: { word: "Info", cls: "bg-hover text-ink-2" },
 }
 
-export function StatusChip({ status, className }: { status: StageStatus; className?: string }) {
+export function StatusChip({ status, word, className }: { status: StageStatus; word?: string; className?: string }) {
   const s = STYLE[status] ?? STYLE.info
   return (
     <span className={cn("inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 font-mono text-[11px] font-medium tracking-[0.06em] uppercase", s.cls, className)}>
       <span aria-hidden className="size-1.5 rounded-[1px] bg-current" />
-      {s.word}
+      {word ?? s.word}
     </span>
   )
+}
+
+const ALERT_TONE: Record<string, StageStatus> = { Sent: "pass", Drafted: "info", Failed: "fail" }
+
+/** Email status: Sent / Drafted / Failed, in the stage chip's shape. */
+export function AlertStatusChip({ status, className }: { status: string; className?: string }) {
+  return <StatusChip status={ALERT_TONE[status] ?? "info"} word={status} className={className} />
 }
 
 /** Finding code in a mono chip, e.g. 6.5. */

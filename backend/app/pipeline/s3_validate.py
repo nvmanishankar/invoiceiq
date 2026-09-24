@@ -1,9 +1,14 @@
 """Stage 3: completeness and maths (cases 3.1-3.7)."""
 
 from app.config import MATHS_TOLERANCE_PAISE
-from app.pipeline.context import RunContext, StageResult, summarise
+from app.pipeline.context import InvoiceFields, RunContext, StageResult, summarise
 from app.utils.money import format_inr
 from app.utils.normalise import normalise_currency
+
+
+def is_bundled(inv: InvoiceFields) -> bool:
+    """One line with no quantity, or no lines at all (3.7)."""
+    return not inv.lines or (len(inv.lines) == 1 and inv.lines[0].qty is None)
 
 
 def run(ctx: RunContext) -> StageResult:
@@ -40,7 +45,7 @@ def run(ctx: RunContext) -> StageResult:
     if inv.invoice_date and inv.invoice_date > ctx.today:
         ctx.add("3.6", "hold", f"The invoice is dated {inv.invoice_date:%d %b %Y}, which is in the future.", ["Vendor"])
 
-    ctx.bundled = not inv.lines or (len(inv.lines) == 1 and inv.lines[0].qty is None)
+    ctx.bundled = is_bundled(inv)
     if ctx.bundled:
         ctx.add("3.7", "info", "The invoice has no itemised quantities, so it's checked at total level only.", [])
 

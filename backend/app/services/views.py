@@ -3,6 +3,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.alerts import alert_dict
 from app.models import Alert, Invoice, PurchaseOrder, Review, RunFile, RunStage
 from app.pipeline.context import Finding
 from app.pipeline.decide import alert_audiences
@@ -242,12 +243,11 @@ def run_detail(db: Session, inv: Invoice) -> dict:
         "decision": decision_dict(db, inv, decision_stage) if inv.status != "running" else None,
         "alert_groups": alert_groups(findings),
         "alerts": [
-            {"alert_id": a.alert_id, "audience": a.audience, "intended_for": a.intended_for, "to_email": a.to_email,
-             "subject": a.subject, "status": a.status, "sent_at": _iso(a.sent_at)}
+            alert_dict(a, inv)
             for a in db.scalars(select(Alert).where(Alert.run_id == inv.run_id).order_by(Alert.alert_id))
         ],
         "reviews": [
-            {"reviewer": r.reviewer, "action": r.action, "reason": r.reason, "field_changes": r.field_changes,
+            {"review_id": r.id, "reviewer": r.reviewer, "action": r.action, "reason": r.reason, "field_changes": r.field_changes,
              "created_at": _iso(r.created_at)}
             for r in db.scalars(select(Review).where(Review.run_id == inv.run_id).order_by(Review.id))
         ],

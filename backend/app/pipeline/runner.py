@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import CompanySettings, Invoice, RunFile, RunStage, utcnow
+from app.models import CompanySettings, Invoice, RunFile, RunStage, clip, utcnow
 from app.pipeline import (
     decide,
     s1_read,
@@ -24,6 +24,7 @@ from app.pipeline import (
     s9_dates,
 )
 from app.pipeline.context import SYSTEM_ERROR, Finding, RunContext, StageResult
+from app.services.matching import needed_pairs, pair_lines, similarity_table
 
 STAGES: list[tuple[str, Callable[[RunContext], StageResult]]] = [
     ("Read document", s1_read.run),
@@ -61,9 +62,11 @@ def create_run(db: Session, file_bytes: bytes, file_name: str | None = None, tod
         file_name=file_name,
         today=today or date.today(),
     )
-    db.add(Invoice(run_id=ctx.run_id, file_name=file_name, file_hash=ctx.file_hash, status="running"))
+    db.add(Invoice(run_id=ctx.run_id, file_name=clip(Invoice, "file_name", file_name), file_hash=ctx.file_hash,
+                   status="running"))
     if store_file:
-        db.add(RunFile(run_id=ctx.run_id, file_name=file_name, size=len(file_bytes), data=file_bytes))
+        db.add(RunFile(run_id=ctx.run_id, file_name=clip(RunFile, "file_name", file_name), size=len(file_bytes),
+                       data=file_bytes))
     db.commit()
     return ctx
 
@@ -85,6 +88,40 @@ def load_run(db: Session, run_id: str, today: date | None = None) -> RunContext:
     )
 
 
+def stored_finding(d: dict) -> Finding:
+    return Finding(d["code"], d["severity"], d["message"], list(d.get("audience") or []), {}, bool(d.get("fraud")))
+
+
+def resume_context(db: Session, run_id: str, start_at: int, today: date | None = None) -> RunContext:
+    """Rebuild what stages 1..start_at left on the context, from the database, to run the rest again.
+
+    Findings come back from the kept stage rows; vendor and PO from the invoice row (a reviewer may have set them).
+    """
+    ctx = load_run(db, run_id, today)
+    row = db.get(Invoice, run_id)
+    kept = db.scalars(select(RunStage).where(RunStage.run_id == run_id, RunStage.stage_order <= start_at)
+                      .order_by(RunStage.stage_order)).all()
+    by_order = {s.stage_order: s.details or {} for s in kept}
+    ctx.findings = [stored_finding(f) for s in kept for f in (s.details or {}).get("findings", [])]
+    ctx.page_count = by_order.get(1, {}).get("pages", 0)
+    ctx.is_scan = bool(by_order.get(1, {}).get("scanned"))
+    ctx.doc_type = row.doc_type
+    ctx.extraction = row.extraction
+    # LLM budget: what this run already used, so a resume can't take it past the per-run cap.
+    ctx.llm_calls = by_order.get(2, {}).get("llm_calls") or 0
+    if by_order.get(5, {}).get("similarity_source") == "llm":
+        ctx.llm_calls += 1
+    if start_at >= 3:
+        ctx.bundled = s3_validate.is_bundled(ctx.inv)
+    if start_at >= 4:
+        ctx.vendor = row.vendor
+    if start_at >= 5 and row.po is not None:
+        ctx.po, ctx.match_type, ctx.match_confidence = row.po, row.po_match_type, row.match_confidence
+        sims = similarity_table(ctx, needed_pairs(ctx.inv.lines, [row.po], skip_exact=True))
+        ctx.line_pairs, ctx.unpaired_lines = pair_lines(ctx.inv.lines, row.po, sims)
+    return ctx
+
+
 def pad_to_min_duration(t0: float, min_ms: int) -> None:
     left = min_ms / 1000 - (time.monotonic() - t0)
     if left > 0:
@@ -102,7 +139,7 @@ def save_stage(ctx: RunContext, order: int, name: str, result: StageResult, t0: 
     ctx.db.add(RunStage(
         run_id=ctx.run_id,
         stage_order=order,
-        stage_name=name,
+        stage_name=clip(RunStage, "stage_name", name),
         status=result.status,
         message=result.message,
         details={**result.details, "findings": [finding_dict(f) for f in findings]},

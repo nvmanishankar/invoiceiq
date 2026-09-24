@@ -12,6 +12,14 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def clip(model: type, column: str, value):
+    """Cut a string to its column's length, so an unusual PDF can't make Postgres refuse the row."""
+    if not isinstance(value, str):
+        return value
+    length = getattr(model.__table__.c[column].type, "length", None)
+    return value[:length] if length else value
+
+
 class CompanySettings(Base):
     __tablename__ = "company_settings"
 

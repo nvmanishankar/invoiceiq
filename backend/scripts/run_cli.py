@@ -6,6 +6,7 @@
 By default each run uses a fresh in-memory database seeded with the demo data,
 so the local ledger isn't touched. Pass --persist to write to DATABASE_URL.
 Extractions are cached in fixtures/extractions/ by file hash.
+Alerts are built but not emailed (they stay Drafted); pass --send-emails to send them through Resend.
 """
 
 import argparse
@@ -16,7 +17,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from sqlalchemy import select  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
+
+from app.config import settings  # noqa: E402
+from app.models import Alert  # noqa: E402
 
 from app.db import SessionLocal, init_db, make_engine  # noqa: E402
 from app.pipeline.runner import create_run, run_pipeline  # noqa: E402
@@ -37,6 +42,8 @@ def run_file(path: Path, db: Session, show_fields: bool) -> None:
         to = ", ".join(f.audience) or "—"
         print(f"      [{f.label} {f.severity}] {f.message}  (to: {to})")
     print(f"      Decision: {ctx.decision} · LLM calls this run: {ctx.llm_calls}")
+    for a in db.scalars(select(Alert).where(Alert.run_id == ctx.run_id).order_by(Alert.alert_id)):
+        print(f"      Alert [{a.status}] {a.subject}")
     if show_fields and ctx.extraction:
         print(json.dumps(ctx.extraction, indent=2, ensure_ascii=False))
 
@@ -46,7 +53,9 @@ def main() -> None:
     ap.add_argument("files", nargs="+", type=Path)
     ap.add_argument("--fields", action="store_true", help="print the extracted fields as JSON")
     ap.add_argument("--persist", action="store_true", help="write runs to DATABASE_URL instead of a throwaway DB")
+    ap.add_argument("--send-emails", action="store_true", help="send alerts through Resend (to OWNER_EMAIL)")
     args = ap.parse_args()
+    settings.SEND_EMAILS = args.send_emails
     logging.basicConfig(level=logging.WARNING, format="      %(levelname)s %(name)s: %(message)s")
 
     for path in args.files:

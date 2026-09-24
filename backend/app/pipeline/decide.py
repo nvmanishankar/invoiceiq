@@ -1,11 +1,12 @@
 """Decision: rules over the findings of every stage (build guide section 9, 'Decision').
 
 Precedence: any reject → Reject; else any hold → Hold; else Approve.
-Alerts are grouped here (one per audience); sending them is alerts.py's job.
+Alerts are grouped here (one per audience); building and sending them is alerts.py's job.
 """
 
 from collections import defaultdict
 
+from app import alerts
 from app.models import Invoice
 from app.pipeline.context import Finding, RunContext, StageResult
 from app.utils.money import format_inr
@@ -75,7 +76,9 @@ def run(ctx: RunContext) -> StageResult:
     why = reasons(ctx.findings, decision)
     audiences = alert_audiences(ctx.findings)
     save_decision(ctx, decision, why)
-    return StageResult(STAGE_STATUS[decision], headline(ctx, decision, why), {
+    line = headline(ctx, decision, why)
+    alerts.build_and_send(ctx, decision, audiences, line)
+    return StageResult(STAGE_STATUS[decision], line, {
         "decision": decision,
         "status": STATUS[decision],
         "reasons": why,

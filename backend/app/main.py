@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.db import SessionLocal, init_db
-from app.routers import admin, runs
+from app.routers import admin, alerts, runs
 from app.seed import seed_if_empty
 from app.services.runs import recover_interrupted_runs
 
@@ -27,6 +27,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="InvoiceIQ", lifespan=lifespan)
 app.include_router(runs.router)
 app.include_router(admin.router)
+app.include_router(alerts.router)
 
 
 @app.get("/api/health")

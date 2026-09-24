@@ -3,7 +3,7 @@
 from datetime import date
 
 from app import llm
-from app.models import Invoice, InvoiceLine
+from app.models import Invoice, InvoiceLine, clip
 from app.pipeline.context import RunContext, StageResult
 from app.schemas import ExtractedInvoice
 from app.utils.money import format_inr, rupees_to_paise
@@ -56,24 +56,29 @@ def save_invoice_fields(ctx: RunContext, inv: ExtractedInvoice) -> None:
     row = ctx.db.get(Invoice, ctx.run_id)
     if row is None:
         return
-    row.doc_type = ctx.doc_type
-    row.invoice_no = inv.invoice_number
-    row.invoice_no_norm = norm_full(inv.invoice_number) or None
+    write_invoice_row(row, ctx.doc_type, ctx.extraction, inv)
+    ctx.db.commit()
+
+
+def write_invoice_row(row: Invoice, doc_type: str | None, extraction: dict | None, inv: ExtractedInvoice) -> None:
+    """The extracted fields as invoice columns and lines. Strings are cut to fit their columns."""
+    row.doc_type = clip(Invoice, "doc_type", doc_type)
+    row.invoice_no = clip(Invoice, "invoice_no", inv.invoice_number)
+    row.invoice_no_norm = clip(Invoice, "invoice_no_norm", norm_full(inv.invoice_number) or None)
     row.invoice_date = _iso_date(inv.invoice_date)
-    row.vendor_tax_id = inv.vendor_gstin
+    row.vendor_tax_id = clip(Invoice, "vendor_tax_id", inv.vendor_gstin)
     row.subtotal_paise = _paise(inv.subtotal)
     row.cgst_paise = _paise(inv.cgst)
     row.sgst_paise = _paise(inv.sgst)
     row.igst_paise = _paise(inv.igst)
     row.total_paise = _paise(inv.total)
-    row.bank_account = inv.bank_account
-    row.extraction = ctx.extraction
+    row.bank_account = clip(Invoice, "bank_account", inv.bank_account)
+    row.extraction = extraction
     row.lines = [
-        InvoiceLine(line_no=i, description=line.description, qty=line.qty, unit=line.unit,
+        InvoiceLine(line_no=i, description=line.description, qty=line.qty, unit=clip(InvoiceLine, "unit", line.unit),
                     unit_price_paise=_paise(line.unit_price), tax_rate=line.tax_rate)
         for i, line in enumerate(inv.lines, start=1)
     ]
-    ctx.db.commit()
 
 
 def run(ctx: RunContext) -> StageResult:

@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     BASE_URL: str = "http://localhost:8000"
     MAX_RUNS_PER_DAY: int = 60
     VENDOR_AUTO_SEND: bool = True
+    SEND_EMAILS: bool = True  # false: alerts are stored as Drafted and nothing goes to Resend
     MIN_STAGE_MS: int = 400
 
 

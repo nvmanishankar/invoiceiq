@@ -5,8 +5,11 @@ import json
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from typing import Any, Literal
+
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
@@ -14,6 +17,7 @@ from starlette.datastructures import UploadFile
 
 from app.db import SessionLocal, get_db
 from app.models import Invoice, RunFile, RunStage, Vendor
+from app.services import review as review_service
 from app.services import runs as run_service
 from app.services.views import decision_dict, run_detail, run_summary, stage_dict
 
@@ -156,3 +160,34 @@ def get_file(run_id: str, db: Session = Depends(get_db)):
 @router.get("/samples")
 def list_samples():
     return run_service.samples()
+
+
+class ReviewBody(BaseModel):
+    action: Literal["confirm", "pick_po", "override", "send_to_vendor", "reject"]
+    fields: dict[str, Any] = Field(default_factory=dict, description="confirm: corrections, as the extraction stores them")
+    po_id: str | None = None
+    reason: str | None = None
+    note: str | None = None
+
+
+@router.post("/runs/{run_id}/review")
+def review_run(run_id: str, body: ReviewBody, background: BackgroundTasks,
+               x_role: str | None = Header(None, description="Procurement / AP clerk / Finance"),
+               db: Session = Depends(get_db)):
+    """Confirm (resume from stage 3), pick PO (resume from stage 6), override, send to vendor, or reject."""
+    try:
+        out = review_service.apply(db, run_id, body.action, x_role, fields=body.fields, po_id=body.po_id,
+                                   reason=body.reason, note=body.note)
+    except review_service.ReviewError as e:
+        db.rollback()
+        raise HTTPException(e.status, e.message)
+    if out.resume_from is not None:
+        background.add_task(run_service.resume_run, run_id, out.resume_from)
+    return {"run_id": out.run_id, "action": out.action, "status": out.status, "resumed": out.resume_from is not None}
+
+
+@router.get("/review-queue")
+def review_queue(db: Session = Depends(get_db)):
+    """Runs waiting for a person, oldest first (they've waited longest)."""
+    rows = db.scalars(select(Invoice).where(Invoice.status == "needs_review").order_by(Invoice.created_at)).all()
+    return {"count": len(rows), "runs": [run_summary(r) for r in rows]}

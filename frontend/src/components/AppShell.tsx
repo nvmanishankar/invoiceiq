@@ -1,10 +1,9 @@
-import { useState } from "react"
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { motion, useReducedMotion } from "motion/react"
 import { DropdownMenu } from "radix-ui"
 
-import { fetchHealth } from "@/api"
+import { fetchHealth, getReviewQueue } from "@/api"
 import { DotMatrix } from "@/components/brand/DotMatrix"
 import { Mark } from "@/components/brand/Mark"
 import { PillButton } from "@/components/ds/PillButton"
@@ -13,11 +12,10 @@ import { useHeadroom } from "@/hooks/useHeadroom"
 import { pageEnter } from "@/lib/motion"
 import { cn } from "@/lib/utils"
 import { MENU_ITEMS, NAV_ITEMS } from "@/nav"
-
-const ROLES = ["Procurement", "AP clerk", "Finance"] as const
+import { ROLES, useRole, type Role } from "@/role"
 
 export function AppShell() {
-  const [role, setRole] = useState<string>("AP clerk")
+  const { role, setRole } = useRole()
   const shown = useHeadroom()
   const reduce = useReducedMotion()
   const { pathname } = useLocation()
@@ -47,11 +45,12 @@ export function AppShell() {
                 }
               >
                 {label}
+                {to === "/review" && <ReviewBadge />}
               </NavLink>
             ))}
           </nav>
           <div className="ml-auto flex items-center gap-2 lg:ml-0">
-            <Select value={role} onValueChange={setRole}>
+            <Select value={role} onValueChange={(r) => setRole(r as Role)}>
               <SelectTrigger
                 aria-label="Role"
                 className="h-11! rounded-full! border-line bg-raised pr-3 pl-4 font-mono text-[13px] text-ink hover:border-ink"
@@ -83,6 +82,7 @@ export function AppShell() {
               }
             >
               {label}
+              {to === "/review" && <ReviewBadge />}
             </NavLink>
           ))}
         </nav>
@@ -140,6 +140,20 @@ function MoreMenu() {
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
+  )
+}
+
+/** Held runs waiting for a person. Hidden at zero. */
+function ReviewBadge() {
+  const { data } = useQuery({ queryKey: ["review-queue"], queryFn: getReviewQueue, refetchInterval: 15_000 })
+  if (!data?.count) return null
+  return (
+    <span
+      aria-label={`${data.count} waiting for review`}
+      className="num ml-1.5 inline-grid h-5 min-w-5 place-items-center rounded-full bg-hold px-1.5 font-mono text-[11px] font-medium text-white"
+    >
+      {data.count}
+    </span>
   )
 }
 

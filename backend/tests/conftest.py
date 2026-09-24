@@ -29,6 +29,25 @@ def offline(monkeypatch):
     monkeypatch.setattr(llm, "_call_similarity_model", boom)
 
 
+@pytest.fixture(autouse=True)
+def emails(monkeypatch):
+    """Tests never reach Resend. Every email that would have gone out is recorded here instead."""
+    from app import alerts
+    from app.config import settings
+
+    sent: list[dict] = []
+
+    def record(subject: str, body: str) -> str:
+        sent.append({"subject": subject, "body": body})
+        return f"test-{len(sent)}"
+
+    monkeypatch.setattr(settings, "RESEND_API_KEY", "")
+    monkeypatch.setattr(settings, "SEND_EMAILS", True)
+    monkeypatch.setattr(settings, "VENDOR_AUTO_SEND", True)
+    monkeypatch.setattr(alerts, "_send_email", record)
+    return sent
+
+
 @pytest.fixture
 def engine():
     eng = make_engine("sqlite://")  # fresh in-memory DB per test

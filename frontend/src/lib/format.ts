@@ -25,3 +25,12 @@ export function day(iso: string | null | undefined): string {
 export function qty(n: number | null | undefined): string {
   return n == null ? "—" : new Intl.NumberFormat("en-IN").format(n)
 }
+
+/** ISO timestamp → "24 Sep 14:32" in local time. */
+export function when(iso: string | null | undefined): string {
+  if (!iso) return "—"
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  const hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+  return `${String(d.getDate()).padStart(2, "0")} ${MONTHS[d.getMonth()]} ${hm}`
+}

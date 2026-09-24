@@ -1,6 +1,6 @@
-import { useState } from "react"
-import { useSearchParams } from "react-router-dom"
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useEffect, useState } from "react"
+import { Link, useSearchParams } from "react-router-dom"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 
 import { ApiError, createRun, getRun, getSamples } from "@/api"
@@ -41,9 +41,18 @@ export function ProcessPage() {
     enabled: !!runId && settled,
   })
   const run = detail.data
+  const qc = useQueryClient()
+  useEffect(() => {
+    // A finished run may have joined the review queue or sent emails.
+    if (settled) {
+      qc.invalidateQueries({ queryKey: ["review-queue"] })
+      qc.invalidateQueries({ queryKey: ["alerts"] })
+    }
+  }, [settled, runId, qc])
   const stages = stream.stages.length ? stream.stages : (run?.stages ?? [])
   const decision = stream.decision ?? run?.decision ?? null
   const running = start.isPending || (!!runId && !settled)
+  const heldForReview = !running && decision?.decision === "Hold" && (run?.status ?? decision.status) === "needs_review"
   const mood: MascotState = running ? "thinking" : decision?.decision ? MOOD[decision.decision] : "idle"
   const activeFile = runId
     ? (run?.file_name ?? (pending?.runId === runId ? pending.label : null))
@@ -146,9 +155,16 @@ export function ProcessPage() {
                 {activeFile ?? "Starting…"}
                 {runId && <span className="text-ink-3"> / {runId}</span>}
               </p>
-              <PillButton variant="secondary" className="ml-auto" onClick={reset} disabled={running}>
-                Process another
-              </PillButton>
+              <div className="ml-auto flex flex-wrap gap-2">
+                {heldForReview && runId && (
+                  <PillButton asChild>
+                    <Link to={`/review/${encodeURIComponent(runId)}`}>Review this</Link>
+                  </PillButton>
+                )}
+                <PillButton variant="secondary" onClick={reset} disabled={running}>
+                  Process another
+                </PillButton>
+              </div>
             </div>
 
             {notFound && <p role="alert" className="text-hold">There's no run called {runId}.</p>}

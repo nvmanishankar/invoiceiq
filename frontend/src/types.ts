@@ -104,8 +104,88 @@ export type RunDetail = {
   stages: Stage[]
   findings: (Finding & { stage_order: number; stage_name: string })[]
   alert_groups: AlertGroups
-  alerts: { alert_id: number; audience: string; intended_for: string; subject: string; status: string }[]
+  alerts: AlertRow[]
+  reviews: ReviewEntry[]
+  extraction: Extraction | null
+  invoice: { invoice_no: string | null; invoice_date: string | null; total_paise: number | null; total_display: string | null }
   po: PoView | null
   comparison: ComparisonRow[]
   has_file: boolean
 }
+
+export type AlertStatus = "Drafted" | "Sent" | "Failed"
+
+export type AlertRow = {
+  alert_id: number
+  run_id: string
+  audience: string
+  intended_for: string | null
+  to_email: string
+  subject: string
+  body: string
+  status: AlertStatus
+  sent_at: string | null
+  invoice_no: string | null
+  run_status: string | null
+}
+
+export type FieldChange = {
+  label?: string
+  before: unknown
+  after: unknown
+  before_display?: string | null
+  after_display?: string | null
+}
+
+export type ReviewEntry = {
+  review_id: number
+  reviewer: string | null
+  action: string
+  reason: string | null
+  field_changes: Record<string, FieldChange> | null
+  created_at: string | null
+}
+
+export type Confidence = "high" | "medium" | "low" | null
+
+/** Stage 2 output as stored: money in rupees, dates ISO. */
+export type Extraction = {
+  vendor_name: string | null
+  vendor_gstin: string | null
+  invoice_number: string | null
+  invoice_date: string | null
+  po_reference: string | null
+  currency: string | null
+  subtotal: number | null
+  cgst: number | null
+  sgst: number | null
+  igst: number | null
+  total: number | null
+  bank_account: string | null
+  ifsc: string | null
+  payment_terms_days: number | null
+  confidence?: Partial<Record<string, Confidence>>
+}
+
+export type RunSummary = {
+  run_id: string
+  file_name: string | null
+  status: string
+  decision: Decision | null
+  invoice_no: string | null
+  vendor_name: string | null
+  po_id: string | null
+  total_paise: number | null
+  total_display: string | null
+  top_reason: string | null
+  created_at: string | null
+}
+
+export type ReviewQueue = { count: number; runs: RunSummary[] }
+
+export type ReviewAction =
+  | { action: "confirm"; fields: Record<string, string | number | null> }
+  | { action: "pick_po"; po_id: string }
+  | { action: "override"; reason: string }
+  | { action: "send_to_vendor"; reason: string; note?: string }
+  | { action: "reject"; reason: string }

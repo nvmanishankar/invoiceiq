@@ -12,7 +12,7 @@ from app.db import SessionLocal
 from app.models import Invoice, RunStage, utcnow
 from app.pipeline import decide
 from app.pipeline.context import SYSTEM_ERROR
-from app.pipeline.runner import DECISION_ORDER, create_run, load_run, run_pipeline
+from app.pipeline.runner import DECISION_ORDER, create_run, load_run, resume_context, run_pipeline
 
 log = logging.getLogger(__name__)
 
@@ -79,6 +79,18 @@ def execute_run(run_id: str) -> None:
             log.exception("run %s failed outside the stages", run_id)
             db.rollback()
             fail_run(db, run_id, "The system stopped while checking this invoice, so a person needs to review it.")
+
+
+def resume_run(run_id: str, start_at: int) -> None:
+    """Background task after a review: run the stages from `start_at` again, then decide. Same safety as execute_run."""
+    with SessionLocal() as db:
+        try:
+            run_pipeline(resume_context(db, run_id, start_at, today=today()), start_at=start_at)
+        except Exception:
+            log.exception("resuming run %s failed outside the stages", run_id)
+            db.rollback()
+            fail_run(db, run_id, "The system stopped while re-checking this invoice after review, so a person "
+                                 "needs to review it again.")
 
 
 def fail_run(db: Session, run_id: str, message: str) -> None:
