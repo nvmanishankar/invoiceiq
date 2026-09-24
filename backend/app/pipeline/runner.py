@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import CompanySettings, Invoice, RunStage, utcnow
+from app.models import CompanySettings, Invoice, RunFile, RunStage, utcnow
 from app.pipeline import (
     decide,
     s1_read,
@@ -23,7 +23,7 @@ from app.pipeline import (
     s8_tax,
     s9_dates,
 )
-from app.pipeline.context import SYSTEM_ERROR, RunContext, StageResult
+from app.pipeline.context import SYSTEM_ERROR, Finding, RunContext, StageResult
 
 STAGES: list[tuple[str, Callable[[RunContext], StageResult]]] = [
     ("Read document", s1_read.run),
@@ -38,6 +38,7 @@ STAGES: list[tuple[str, Callable[[RunContext], StageResult]]] = [
 ]
 HALTING_STAGES = 2  # only stages 1-2 may stop the run: later stages have nothing to check
 DECISION = ("Decision", decide.run)
+DECISION_ORDER = len(STAGES) + 1
 
 
 def file_hash(data: bytes) -> str:
@@ -48,7 +49,8 @@ def new_run_id() -> str:
     return f"RUN-{uuid.uuid4().hex[:10].upper()}"
 
 
-def create_run(db: Session, file_bytes: bytes, file_name: str | None = None, today: date | None = None) -> RunContext:
+def create_run(db: Session, file_bytes: bytes, file_name: str | None = None, today: date | None = None,
+               store_file: bool = False) -> RunContext:
     company = db.scalar(select(CompanySettings).limit(1))
     ctx = RunContext(
         run_id=new_run_id(),
@@ -60,8 +62,27 @@ def create_run(db: Session, file_bytes: bytes, file_name: str | None = None, tod
         today=today or date.today(),
     )
     db.add(Invoice(run_id=ctx.run_id, file_name=file_name, file_hash=ctx.file_hash, status="running"))
+    if store_file:
+        db.add(RunFile(run_id=ctx.run_id, file_name=file_name, size=len(file_bytes), data=file_bytes))
     db.commit()
     return ctx
+
+
+def load_run(db: Session, run_id: str, today: date | None = None) -> RunContext:
+    """A context for a run created earlier (e.g. by the API), bound to this session."""
+    row = db.get(Invoice, run_id)
+    stored = db.get(RunFile, run_id)
+    if row is None or stored is None:
+        raise LookupError(f"run {run_id} or its file not found")
+    return RunContext(
+        run_id=run_id,
+        file_bytes=stored.data,
+        file_hash=row.file_hash or file_hash(stored.data),
+        company=db.scalar(select(CompanySettings).limit(1)),
+        db=db,
+        file_name=row.file_name,
+        today=today or date.today(),
+    )
 
 
 def pad_to_min_duration(t0: float, min_ms: int) -> None:
@@ -70,14 +91,21 @@ def pad_to_min_duration(t0: float, min_ms: int) -> None:
         time.sleep(left)
 
 
-def save_stage(ctx: RunContext, order: int, name: str, result: StageResult, t0: float) -> None:
+def finding_dict(f: Finding) -> dict:
+    return {"code": f.code, "label": f.label, "severity": f.severity, "message": f.message,
+            "audience": f.audience, "fraud": f.fraud}
+
+
+def save_stage(ctx: RunContext, order: int, name: str, result: StageResult, t0: float,
+               findings: list[Finding] = ()) -> None:
+    """One run_stages row; the findings this stage raised go in details["findings"]."""
     ctx.db.add(RunStage(
         run_id=ctx.run_id,
         stage_order=order,
         stage_name=name,
         status=result.status,
         message=result.message,
-        details=result.details,
+        details={**result.details, "findings": [finding_dict(f) for f in findings]},
         duration_ms=int((time.monotonic() - t0) * 1000),
     ))
     ctx.db.commit()
@@ -104,9 +132,10 @@ def run_pipeline(
     min_ms = settings.MIN_STAGE_MS if min_stage_ms is None else min_stage_ms
     for order, (name, fn) in enumerate(STAGES[start_at:], start=start_at + 1):
         t0 = time.monotonic()
+        seen = len(ctx.findings)
         result = _run_stage(ctx, name, fn)
         pad_to_min_duration(t0, min_ms)
-        save_stage(ctx, order, name, result, t0)
+        save_stage(ctx, order, name, result, t0, ctx.findings[seen:])
         if on_stage:
             on_stage(order, name, result)
         if ctx.halt and order <= HALTING_STAGES:
@@ -114,6 +143,7 @@ def run_pipeline(
         ctx.halt = False  # a later stage can't stop the run
 
     t0 = time.monotonic()
+    seen = len(ctx.findings)
     name, fn = DECISION
     result = _run_stage(ctx, name, fn)
     if ctx.decision is None:  # the decision step itself failed: the sys finding makes it a Hold
@@ -122,9 +152,9 @@ def run_pipeline(
         if row is not None:
             row.decision, row.status = ctx.decision, decide.STATUS[ctx.decision]
     pad_to_min_duration(t0, min_ms)
-    save_stage(ctx, len(STAGES) + 1, name, result, t0)
+    save_stage(ctx, DECISION_ORDER, name, result, t0, ctx.findings[seen:])
     if on_stage:
-        on_stage(len(STAGES) + 1, name, result)
+        on_stage(DECISION_ORDER, name, result)
 
     row = ctx.db.get(Invoice, ctx.run_id)
     if row is not None:

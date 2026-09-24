@@ -44,4 +44,5 @@ def db(engine):
 
 
 def pytest_sessionfinish(session, exitstatus):
-    _TMP_DB.unlink(missing_ok=True)
+    for suffix in ("", "-wal", "-shm"):
+        Path(f"{_TMP_DB}{suffix}").unlink(missing_ok=True)

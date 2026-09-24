@@ -18,9 +18,11 @@ def make_engine(url: str) -> Engine:
         eng = create_engine(url, connect_args={"check_same_thread": False})
 
         @event.listens_for(eng, "connect")
-        def _fk_on(dbapi_conn, _):
+        def _pragmas(dbapi_conn, _):
             cur = dbapi_conn.cursor()
             cur.execute("PRAGMA foreign_keys=ON")
+            # WAL: the SSE reader and the pipeline writer don't block each other.
+            cur.execute("PRAGMA journal_mode=WAL")
             cur.close()
 
         return eng

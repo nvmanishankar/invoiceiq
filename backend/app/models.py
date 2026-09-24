@@ -2,7 +2,7 @@
 
 from datetime import date, datetime, timezone
 
-from sqlalchemy import JSON, BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -150,6 +150,18 @@ class Invoice(Base):
     lines: Mapped[list["InvoiceLine"]] = relationship(
         back_populates="invoice", order_by="InvoiceLine.line_no", cascade="all, delete-orphan"
     )
+
+
+class RunFile(Base):
+    """The uploaded PDF, kept in the database: Render's disk is wiped on restart."""
+
+    __tablename__ = "run_files"
+
+    run_id: Mapped[str] = mapped_column(ForeignKey("invoices.run_id"), primary_key=True)
+    file_name: Mapped[str | None] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(100), default="application/pdf")
+    size: Mapped[int] = mapped_column(Integer)
+    data: Mapped[bytes] = mapped_column(LargeBinary)
 
 
 class InvoiceLine(Base):
