@@ -124,7 +124,7 @@
     "invoice_no": "QT/ACME/2026/077",
     "invoice_date": "2026-09-22",
     "po_ref_printed": null,
-    "total_paise": 7729000,
+    "total_paise": null,
     "scanned": false,
     "decision": "Reject",
     "codes": [

@@ -56,3 +56,12 @@ class Extraction(BaseModel):
     doc_type: DocType
     invoices: list[ExtractedInvoice]
     boundaries_clear: bool = True
+
+
+class PairScore(BaseModel):
+    pair: int  # index into the numbered list sent in the prompt
+    score: float  # 0-1: how likely both descriptions mean the same item
+
+
+class SimilarityScores(BaseModel):
+    scores: list[PairScore]

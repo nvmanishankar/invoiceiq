@@ -579,9 +579,11 @@ def main():
             data = to_scan(data)
         (SAMPLE_DIR / s["file"]).write_bytes(data)
         t = build_totals(s["lines"], s["split"])
+        # A quotation prints no grand total ("plus GST"), so the expected extracted total is null.
+        total = None if s.get("title") == "QUOTATION" else t["total"]
         expected.append(dict(file=s["file"], story=s["story"], vendor_id=s["vendor_id"],
                              invoice_no=s["invoice_no"], invoice_date=s["date"], po_ref_printed=s["po_ref"],
-                             total_paise=t["total"], scanned=s["scan"], **s["expected"]))
+                             total_paise=total, scanned=s["scan"], **s["expected"]))
     (SAMPLE_DIR / "expected.json").write_text(json.dumps(expected, indent=2, ensure_ascii=False))
     print(f"Wrote seed data to {SEED_DIR} and {len(SAMPLES)} samples to {SAMPLE_DIR}")
 

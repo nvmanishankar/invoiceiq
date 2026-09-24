@@ -39,3 +39,13 @@ def format_inr(paise: int | None, symbol: str = "₹") -> str:
     rupees, rem = divmod(abs(int(paise)), 100)
     out = f"{sign}{symbol}{_group_indian(rupees)}"
     return out + (f".{rem:02d}" if rem else "")
+
+
+def format_qty(q: float | None) -> str:
+    """2100.0 → '2,100'; 2.5 → '2.5'."""
+    if q is None:
+        return "—"
+    whole = int(q)
+    if q == whole:
+        return ("-" if whole < 0 else "") + _group_indian(abs(whole))
+    return f"{q:g}"

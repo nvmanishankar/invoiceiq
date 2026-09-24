@@ -1,0 +1,34 @@
+{
+  "key": "4dd0792a479a6d9e750b2a12f57eb3bfecefa4fdfdd4b9fef9e585075e99db83",
+  "prompt_version": "sim-v1",
+  "model": "gemini-3.5-flash-lite",
+  "scored_at": "2026-09-24T01:36:49+00:00",
+  "pairs": [
+    {
+      "invoice": "ErgoPro Mesh Ergonomic Chair",
+      "po": "A4 copier paper 75gsm (ream of 500 sheets)",
+      "score": 0.0
+    },
+    {
+      "invoice": "ErgoPro Mesh Ergonomic Chair",
+      "po": "Chair floor mat",
+      "score": 0.0
+    },
+    {
+      "invoice": "ErgoPro Mesh Ergonomic Chair",
+      "po": "Ergonomic office chair, mesh back",
+      "score": 1.0
+    },
+    {
+      "invoice": "ErgoPro Mesh Ergonomic Chair",
+      "po": "Standard office chair",
+      "score": 0.5
+    }
+  ],
+  "scores": [
+    0.0,
+    0.0,
+    1.0,
+    0.5
+  ]
+}

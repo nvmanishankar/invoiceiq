@@ -15,6 +15,20 @@ from app.db import make_engine  # noqa: E402
 from app.seed import reset  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def offline(monkeypatch):
+    """Tests never reach Gemini: no key, and both model calls fail loudly if reached anyway."""
+    from app import llm
+    from app.config import settings
+
+    def boom(*a, **k):
+        raise AssertionError("network call attempted")
+
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "")
+    monkeypatch.setattr(llm, "_call_model", boom)
+    monkeypatch.setattr(llm, "_call_similarity_model", boom)
+
+
 @pytest.fixture
 def engine():
     eng = make_engine("sqlite://")  # fresh in-memory DB per test

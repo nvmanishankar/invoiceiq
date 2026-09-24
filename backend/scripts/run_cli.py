@@ -35,8 +35,8 @@ def run_file(path: Path, db: Session, show_fields: bool) -> None:
     run_pipeline(ctx, min_stage_ms=0, on_stage=print_stage)
     for f in ctx.findings:
         to = ", ".join(f.audience) or "—"
-        print(f"      [{f.code} {f.severity}] {f.message}  (to: {to})")
-    print(f"      LLM calls this run: {ctx.llm_calls}")
+        print(f"      [{f.label} {f.severity}] {f.message}  (to: {to})")
+    print(f"      Decision: {ctx.decision} · LLM calls this run: {ctx.llm_calls}")
     if show_fields and ctx.extraction:
         print(json.dumps(ctx.extraction, indent=2, ensure_ascii=False))
 

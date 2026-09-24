@@ -20,3 +20,23 @@ TEXT_LIMIT = 20000
 
 def extraction_prompt(text: str) -> str:
     return EXTRACTION_PROMPT.replace("<<<TEXT>>>", (text or "")[:TEXT_LIMIT])
+
+
+# Bump the version whenever the prompt changes, so cached scores are recomputed.
+SIMILARITY_PROMPT_VERSION = "sim-v1"
+
+SIMILARITY_PROMPT = """You compare item descriptions for an accounts payable team.
+Each numbered pair has an item description from a vendor invoice (A) and a line from a
+purchase order (B). For each pair, score from 0 to 1 how likely A and B describe the same
+kind of item, so the invoice line could be billing that PO line:
+- 1.0 the same item, possibly worded differently or with a brand name added
+- about 0.5 related but a different item or specification (e.g. a different model or grade)
+- 0.0 unrelated items
+Judge only the item itself. Ignore quantities and prices. Return one score per pair.
+Pairs:
+<<<PAIRS>>>"""
+
+
+def similarity_prompt(pairs: list[tuple[str, str]]) -> str:
+    lines = [f'{i}. A: "{a}" | B: "{b}"' for i, (a, b) in enumerate(pairs)]
+    return SIMILARITY_PROMPT.replace("<<<PAIRS>>>", "\n".join(lines))

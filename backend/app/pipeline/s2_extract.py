@@ -7,7 +7,7 @@ from app.models import Invoice, InvoiceLine
 from app.pipeline.context import RunContext, StageResult
 from app.schemas import ExtractedInvoice
 from app.utils.money import format_inr, rupees_to_paise
-from app.utils.normalise import norm_full
+from app.utils.normalise import norm_full, normalise_currency
 
 FIELD_LABELS = {
     "invoice_number": "invoice number",
@@ -114,6 +114,7 @@ def run(ctx: RunContext) -> StageResult:
         return StageResult("info", f"{len(ex.invoices)} invoices in one file", {"count": len(ex.invoices), "page_ranges": pages})
 
     inv = ex.invoices[0]
+    inv.currency = normalise_currency(inv.currency)  # 'Rs.', '₹', 'INR' → 'INR'
     if inv.tax_inclusive:
         back_calculate_tax(ctx, inv)
     low = [FIELD_LABELS[f] for f, c in inv.confidence.model_dump().items() if c == "low"]
