@@ -10,14 +10,11 @@ from app.pipeline.decide import alert_audiences
 from app.pipeline.runner import DECISION_ORDER
 from app.services.po import invoiced_qty, po_invoiced_paise, po_total_paise
 from app.utils.money import format_inr
+from app.utils.timefmt import iso as _iso
 
 
 def money(name: str, paise: int | None) -> dict:
     return {f"{name}_paise": paise, f"{name}_display": None if paise is None else format_inr(paise)}
-
-
-def _iso(v) -> str | None:
-    return v.isoformat() if v is not None else None
 
 
 def _taxable(qty: float | None, unit_price_paise: int | None) -> int | None:

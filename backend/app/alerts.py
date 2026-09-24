@@ -18,6 +18,7 @@ from app.config import settings
 from app.models import Alert, CompanySettings, Invoice, RunStage, Vendor, clip, utcnow
 from app.pipeline.context import Finding, RunContext
 from app.utils.money import format_inr
+from app.utils.timefmt import iso
 
 log = logging.getLogger(__name__)
 
@@ -330,7 +331,7 @@ def alert_dict(a: Alert, row: Invoice | None = None) -> dict:
         "subject": a.subject,
         "body": a.body,
         "status": a.status,
-        "sent_at": a.sent_at.isoformat() if a.sent_at else None,
+        "sent_at": iso(a.sent_at),
         "invoice_no": row.invoice_no if row is not None else None,
         "run_status": row.status if row is not None else None,
     }

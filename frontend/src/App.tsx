@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { lazy, Suspense, type ReactNode } from "react"
 import { Navigate, Route, Routes } from "react-router-dom"
 
 import { AppShell } from "@/components/AppShell"
@@ -10,9 +10,13 @@ import { ReviewPage } from "@/pages/review/ReviewPage"
 import { Styleguide } from "@/pages/Styleguide"
 import { RoleProvider } from "@/components/RoleProvider"
 
+// Recharts is heavy; only the dashboard needs it.
+const DashboardPage = lazy(() => import("@/pages/dashboard/DashboardPage").then((m) => ({ default: m.DashboardPage })))
+
 const BUILT: Record<string, ReactNode> = {
   "/process": <ProcessPage />,
   "/review": <ReviewPage />,
+  "/dashboard": <Suspense fallback={null}><DashboardPage /></Suspense>,
   "/outbox": <OutboxPage />,
   "/styleguide": <Styleguide />,
 }

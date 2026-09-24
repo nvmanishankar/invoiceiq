@@ -101,6 +101,8 @@ export type RunDetail = {
   invoice_no: string | null
   vendor_name: string | null
   po_id: string | null
+  created_at: string | null
+  finished_at: string | null
   stages: Stage[]
   findings: (Finding & { stage_order: number; stage_name: string })[]
   alert_groups: AlertGroups
@@ -189,3 +191,39 @@ export type ReviewAction =
   | { action: "override"; reason: string }
   | { action: "send_to_vendor"; reason: string; note?: string }
   | { action: "reject"; reason: string }
+
+export type Money = { paise: number; display: string }
+
+export type Stats = {
+  generated_at: string
+  kpis: {
+    processed: number
+    in_progress: number
+    touchless: number
+    touchless_rate: number | null
+    approved: number
+    held: number
+    rejected: number
+    waiting_on_vendor: number
+    open_review: number
+    money_protected: Money & { breakdown: (Money & { key: string; label: string; runs: number })[] }
+    time_saved: { minutes: number; hours: number; minutes_per_invoice: number; assumption: string }
+    avg_processing_seconds: number | null
+  }
+  today: { date: string; processed: number; touchless: number; held: number; rejected: number }
+  series: {
+    decisions_per_day: ({ date: string } & Record<Decision, number>)[]
+    top_reasons: { code: string; label: string; title: string; count: number; hold: number; reject: number }[]
+  }
+  health: {
+    low_confidence_runs: number
+    low_confidence_share: number | null
+    system_error_runs: number
+    system_error_share: number | null
+    llm_calls_per_run: number | null
+    avg_stage_ms: number | null
+  }
+  vendors: { vendor_id: string; name: string; runs: number }[]
+}
+
+export type RunFilters = { status?: string; vendor?: string; q?: string }

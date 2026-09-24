@@ -1,4 +1,4 @@
-import type { AlertRow, ReviewAction, ReviewQueue, RunDetail, Sample } from "@/types"
+import type { AlertRow, ReviewAction, ReviewQueue, RunDetail, RunFilters, RunSummary, Sample, Stats } from "@/types"
 
 export class ApiError extends Error {
   status: number
@@ -67,3 +67,13 @@ export const reviewRun = (runId: string, action: ReviewAction, role: string) =>
 
 export const getAlerts = () => getJson<AlertRow[]>("/api/alerts")
 export const sendAlert = (alertId: number) => postJson<AlertRow>(`/api/alerts/${alertId}/send`)
+
+/** Dashboard numbers. The viewer's UTC offset makes "today" and the daily bars follow their calendar. */
+export const getStats = () => getJson<Stats>(`/api/stats?tz_offset=${-new Date().getTimezoneOffset()}`)
+
+export function getRuns(filters: RunFilters = {}) {
+  const params = new URLSearchParams()
+  for (const [k, v] of Object.entries(filters)) if (v) params.set(k, v)
+  const qs = params.toString()
+  return getJson<RunSummary[]>(`/api/runs${qs ? `?${qs}` : ""}`)
+}

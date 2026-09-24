@@ -88,4 +88,5 @@ def run(ctx: RunContext) -> StageResult:
         "match_confidence": ctx.match_confidence,
         "fraud": any(f.fraud for f in ctx.findings),
         "alerts": {a: [f.code for f in fs] for a, fs in audiences.items()},
+        "llm_calls": ctx.llm_calls,  # for the dashboard's health strip
     })
