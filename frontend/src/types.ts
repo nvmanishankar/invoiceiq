@@ -254,6 +254,7 @@ export type Stats = {
     rejected: number
     waiting_on_vendor: number
     open_review: number
+    superseded: number
     money_protected: Money & { breakdown: (Money & { key: string; label: string; runs: number })[] }
     time_saved: { minutes: number; hours: number; minutes_per_invoice: number; assumption: string }
     avg_processing_seconds: number | null

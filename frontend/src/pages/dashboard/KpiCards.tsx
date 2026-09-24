@@ -93,6 +93,10 @@ export function KpiCards({ stats }: { stats: Stats }) {
             <span className="text-ink">Waiting on the vendor</span>
             <span className="num ml-auto text-ink">{k.waiting_on_vendor}</span>
           </li>
+          <li className="flex items-baseline gap-3 border-t border-line py-2.5 text-[14px]">
+            <span className="text-ink">Replaced by a corrected invoice</span>
+            <span className="num ml-auto text-ink">{k.superseded}</span>
+          </li>
         </ul>
       </Card>
     </div>

@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet, useLocation } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { motion, useReducedMotion } from "motion/react"
 import { DropdownMenu } from "radix-ui"
+import { useEffect } from "react"
 
 import { fetchHealth, getReviewQueue } from "@/api"
 import { DotMatrix } from "@/components/brand/DotMatrix"
@@ -9,6 +10,7 @@ import { Mark } from "@/components/brand/Mark"
 import { PillButton } from "@/components/ds/PillButton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useHeadroom } from "@/hooks/useHeadroom"
+import { tour, useTour } from "@/hooks/useTour"
 import { pageEnter } from "@/lib/motion"
 import { cn } from "@/lib/utils"
 import { MENU_ITEMS, NAV_ITEMS } from "@/nav"
@@ -19,6 +21,12 @@ export function AppShell() {
   const shown = useHeadroom()
   const reduce = useReducedMotion()
   const { pathname } = useLocation()
+  const { overbillRun } = useTour()
+  useEffect(() => {
+    // Tour steps that tick from the page you reach.
+    if (pathname === "/dashboard") tour.complete("dashboard")
+    if (overbillRun && pathname === `/review/${encodeURIComponent(overbillRun)}`) tour.complete("overbill")
+  }, [pathname, overbillRun])
 
   return (
     <div className="flex min-h-svh flex-col bg-canvas">

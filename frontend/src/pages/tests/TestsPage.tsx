@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useSearchParams } from "react-router-dom"
 import { useMutation, useQuery } from "@tanstack/react-query"
 
 import { getSamples, runTestSuite } from "@/api"
@@ -8,6 +9,7 @@ import { PillButton } from "@/components/ds/PillButton"
 import { SectionTitle } from "@/components/ds/SectionTitle"
 import { SpeechBubble } from "@/components/ds/SpeechBubble"
 import { SplitContainer } from "@/components/ds/SplitContainer"
+import { tour } from "@/hooks/useTour"
 import { CodeChip, StatusChip } from "@/components/ds/StatusChip"
 import { DECISION_WORD } from "@/lib/decision"
 import { day, ms, when } from "@/lib/format"
@@ -36,7 +38,22 @@ function Shimmer({ className }: { className?: string }) {
 export function TestsPage() {
   const [open, setOpen] = useState<string | null>(null)
   const samples = useQuery({ queryKey: ["samples"], queryFn: getSamples, staleTime: Infinity })
-  const suite = useMutation({ mutationFn: runTestSuite, onMutate: () => setOpen(null) })
+  const suite = useMutation({
+    mutationFn: runTestSuite,
+    onMutate: () => setOpen(null),
+    onSuccess: (r) => r.total > 0 && tour.complete("tests"),
+  })
+  const [params, setParams] = useSearchParams()
+  const autorun = params.get("run") === "all"
+  const { mutate } = suite
+  const autoran = useRef(false)
+  useEffect(() => {
+    // The tour links here with ?run=all: start once, then drop the param so a reload doesn't run it again.
+    if (!autorun || autoran.current) return
+    autoran.current = true
+    setParams({}, { replace: true })
+    mutate()
+  }, [autorun, mutate, setParams])
   const running = suite.isPending
   const run = running ? null : suite.data
   const allPassed = !!run && run.passed === run.total

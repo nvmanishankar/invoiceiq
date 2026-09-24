@@ -25,6 +25,7 @@ LOW_CONFIDENCE_CODE = "2.2"
 AMOUNTS_STAGE = 6
 EXTRACT_STAGE = 2
 TOP_REASONS = 8
+SUPERSEDED = "superseded"  # services.review.SUPERSEDED
 
 
 @dataclass
@@ -132,10 +133,13 @@ def compute(db: Session, tz_offset_minutes: int = 0, days: int = 14, now: dateti
 
     runs = _load(db)
     done = [r for r in runs if r.status != "running" and r.decision is not None]
-    processed = len(done)
-    by_decision = Counter(r.decision for r in done)
+    # A superseded run was replaced by a corrected invoice: its replacement carries the outcome, so it isn't counted
+    # as a decision. What it blocked was still blocked, so it stays in money protected.
+    live = [r for r in done if r.status != SUPERSEDED]
+    processed = len(live)
+    by_decision = Counter(r.decision for r in live)
     by_status = Counter(r.status for r in runs)
-    touchless = sum(1 for r in done if r.decision == "Approve" and not r.reviewed)
+    touchless = sum(1 for r in live if r.decision == "Approve" and not r.reviewed)
 
     protected = {"duplicates": [0, 0], "overbilling": [0, 0], "fraud": [0, 0]}  # paise, runs
     for r in done:
@@ -151,14 +155,14 @@ def compute(db: Session, tz_offset_minutes: int = 0, days: int = 14, now: dateti
     # Decisions per day, oldest first, every day in the window present (empty days are zeros).
     first = today - timedelta(days=days - 1)
     per_day: dict[date, Counter] = {first + timedelta(days=i): Counter() for i in range(days)}
-    for r in done:
+    for r in live:
         d = _local_day(r.created_at, offset)
         if d in per_day:
             per_day[d][r.decision] += 1
 
     # Hold / reject reasons: each code counted once per run.
     reason_runs: dict[str, Counter] = defaultdict(Counter)
-    for r in done:
+    for r in live:
         if r.decision == "Approve":
             continue
         seen: dict[str, str] = {}
@@ -178,7 +182,7 @@ def compute(db: Session, tz_offset_minutes: int = 0, days: int = 14, now: dateti
     low_conf = sum(1 for r in done if LOW_CONFIDENCE_CODE in _codes(r))
     sys_err = sum(1 for r in done if SYSTEM_ERROR in _codes(r))
 
-    todays = [r for r in done if _local_day(r.created_at, offset) == today]
+    todays = [r for r in live if _local_day(r.created_at, offset) == today]
     vendors = Counter((r.vendor_id, r.vendor_name) for r in runs if r.vendor_id)
 
     return {
@@ -193,6 +197,7 @@ def compute(db: Session, tz_offset_minutes: int = 0, days: int = 14, now: dateti
             "rejected": by_decision.get("Reject", 0),
             "waiting_on_vendor": by_status.get("waiting_on_vendor", 0),
             "open_review": by_status.get("needs_review", 0),
+            "superseded": by_status.get(SUPERSEDED, 0),
             "money_protected": {
                 **_money(protected_total),
                 "breakdown": [

@@ -11,6 +11,7 @@ import { PillLink } from "@/components/ds/PillLink"
 import { RunLinks } from "@/components/ds/RunLinks"
 import { SpeechBubble } from "@/components/ds/SpeechBubble"
 import { SplitContainer } from "@/components/ds/SplitContainer"
+import { tour, useTour } from "@/hooks/useTour"
 import type { Decision } from "@/types"
 import { AlertGroups } from "./AlertGroups"
 import { CompareTable } from "./CompareTable"
@@ -21,6 +22,7 @@ import { PdfPreview } from "./PdfPreview"
 import { PoBalance } from "./PoBalance"
 import { sampleName } from "./samples"
 import { Timeline } from "./Timeline"
+import { TourCard } from "./TourCard"
 import { useRunStream } from "./useRunStream"
 
 const MOOD: Record<Decision, MascotState> = { Approve: "approved", Hold: "hold", Reject: "reject" }
@@ -53,6 +55,17 @@ export function ProcessPage() {
       qc.invalidateQueries({ queryKey: ["alerts"] })
     }
   }, [settled, runId, qc])
+  const tourState = useTour()
+  useEffect(() => {
+    // Tour steps tick from the finished run, whichever button started it.
+    if (!run?.decision || run.status === "running") return
+    const prefix = run.file_name?.slice(0, 3)
+    const verdict = run.decision.decision
+    if (prefix === "01_" && verdict === "Approve") tour.complete("pay")
+    if (prefix === "06_" && verdict === "Hold" && run.findings.some((f) => f.fraud) && !run.alerts.some((a) => a.audience === "Vendor"))
+      tour.complete("fraud")
+    if (prefix === "04_" && verdict === "Hold") tour.setOverbillRun(run.run_id)
+  }, [run])
   const stages = stream.stages.length ? stream.stages : (run?.stages ?? [])
   const decision = stream.decision ?? run?.decision ?? null
   const running = start.isPending || (!!runId && !settled)
@@ -81,9 +94,20 @@ export function ProcessPage() {
     setParams({})
   }
 
+  const openTour = () => {
+    tour.open()
+    reset()
+  }
+  const sampleFile = (prefix: string) => samples.data?.find((s) => s.file.startsWith(`${prefix}_`))?.file
+
   const rail = (
     <>
-      <h1 className="text-h1">Process</h1>
+      <div className="flex items-baseline justify-between gap-4">
+        <h1 className="text-h1">Process</h1>
+        <PillButton variant="link" arrow={false} className="text-ink-2" onClick={openTour} disabled={running}>
+          Tour · {tourState.done.length}/5
+        </PillButton>
+      </div>
       <div className="flex flex-col gap-3">
         <PixelMascot state={mood} size={72} />
         <SpeechBubble text={runId || start.isPending ? narrate(stages, decision, running) : narrate([], null, false)} />
@@ -138,6 +162,9 @@ export function ProcessPage() {
             transition={{ duration: reduce ? 0 : 0.25 }}
             className="flex flex-col gap-6"
           >
+            {!tourState.dismissed && (
+              <TourCard sampleFile={sampleFile} onRun={(f) => begin({ sample_name: f }, f)} disabled={running} />
+            )}
             <Dropzone onFile={(f) => begin({ file: f }, f.name)} />
             <div className="overflow-hidden rounded-card bg-accent px-6 pt-4 pb-2">
               <DotMatrix text="InvoiceIQ" color="#ffffff" height={220} />

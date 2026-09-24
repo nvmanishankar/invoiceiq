@@ -24,7 +24,7 @@ def test_kpis_after_all_ten_samples(db, ran):
     k = compute(db)["kpis"]
     assert k["processed"] == 10
     assert (k["approved"], k["held"], k["rejected"]) == (3, 4, 3)
-    assert k["open_review"] == 4 and k["waiting_on_vendor"] == 0 and k["in_progress"] == 0
+    assert k["open_review"] == 4 and k["waiting_on_vendor"] == 0 and k["in_progress"] == 0 and k["superseded"] == 0
     assert k["touchless"] == 3 and k["touchless_rate"] == 0.3
     assert k["time_saved"] == {"minutes": 80, "hours": 1.3, "minutes_per_invoice": 8,
                                "assumption": "8 minutes of manual AP work per invoice"}
@@ -73,6 +73,26 @@ def test_overridden_overbilling_is_no_longer_protected(db, ran):
     db.commit()
     mp = compute(db)["kpis"]["money_protected"]
     assert mp["paise"] == PROTECTED["05"] + PROTECTED["06"]
+
+
+def test_superseded_run_is_not_a_decision_but_stays_protected(db, ran):
+    before = compute(db)
+    row = db.get(Invoice, ran["04"])  # held for over-billing, then replaced by a corrected invoice
+    review_service.supersede(db, row, "AP clerk", "corrected-run")
+    db.commit()
+    s = compute(db)
+    k = s["kpis"]
+    assert k["superseded"] == 1 and before["kpis"]["superseded"] == 0
+    assert k["processed"] == 9
+    assert (k["approved"], k["held"], k["rejected"]) == (3, 3, 3)
+    assert k["touchless"] == 3 and k["touchless_rate"] == round(3 / 9, 4)
+    assert k["open_review"] == 3
+    assert k["money_protected"]["paise"] == before["kpis"]["money_protected"]["paise"] == sum(PROTECTED.values())
+    assert sum(d["Hold"] for d in s["series"]["decisions_per_day"]) == 3
+    old = {r["code"]: r["count"] for r in before["series"]["top_reasons"]}
+    top = {r["code"]: r["count"] for r in s["series"]["top_reasons"]}
+    assert top["6.5"] == old["6.5"] - 1
+    assert s["today"]["held"] == before["today"]["held"] - 1
 
 
 def test_top_reasons_and_health(db, ran):
