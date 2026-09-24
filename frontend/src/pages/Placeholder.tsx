@@ -1,10 +1,11 @@
+import { SectionTitle } from "@/components/ds/SectionTitle"
+import { SplitContainer } from "@/components/ds/SplitContainer"
+
 export function Placeholder({ title }: { title: string }) {
   return (
-    <div className="mx-auto max-w-5xl">
-      <h1 className="mb-4 text-xl font-semibold tracking-tight">{title}</h1>
-      <div className="rounded-xl border bg-card p-8 text-sm text-muted-foreground shadow-xs">
-        Coming in a later phase.
-      </div>
-    </div>
+    <SplitContainer rail={<h1 className="text-h1">{title}</h1>}>
+      <SectionTitle>Coming in a later phase</SectionTitle>
+      <p className="mt-4 max-w-prose text-ink-2">This page is part of the build plan and isn't wired up yet.</p>
+    </SplitContainer>
   )
 }

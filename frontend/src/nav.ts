@@ -1,24 +1,18 @@
-import {
-  FlaskConical,
-  Inbox,
-  LayoutDashboard,
-  Mail,
-  Package,
-  ScanLine,
-  Settings,
-  Users,
-  type LucideIcon,
-} from "lucide-react"
+type NavItem = { to: string; label: string }
 
-type NavItem = { to: string; label: string; icon: LucideIcon }
-
+/** Centre links in the top bar. */
 export const NAV_ITEMS: NavItem[] = [
-  { to: "/process", label: "Process", icon: ScanLine },
-  { to: "/review", label: "Review", icon: Inbox },
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/pos", label: "Purchase orders", icon: Package },
-  { to: "/vendors", label: "Vendors", icon: Users },
-  { to: "/outbox", label: "Outbox", icon: Mail },
-  { to: "/tests", label: "Tests", icon: FlaskConical },
-  { to: "/settings", label: "Settings", icon: Settings },
+  { to: "/process", label: "Process" },
+  { to: "/review", label: "Review" },
+  { to: "/dashboard", label: "Dashboard" },
+  { to: "/pos", label: "Purchase orders" },
+  { to: "/vendors", label: "Vendors" },
+  { to: "/outbox", label: "Outbox" },
+  { to: "/tests", label: "Tests" },
+]
+
+/** Under the small menu on the right. */
+export const MENU_ITEMS: NavItem[] = [
+  { to: "/settings", label: "Settings" },
+  { to: "/styleguide", label: "Styleguide" },
 ]
