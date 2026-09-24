@@ -21,7 +21,6 @@ from app.utils.timefmt import iso
 log = logging.getLogger(__name__)
 
 AUDIENCE_ORDER = ["Finance", "AP", "Procurement", "Vendor"]
-SEND_BACK_REASONS = ("Unreadable scan", "Missing information", "Other")
 
 
 class VendorEmailBlocked(Exception):
@@ -129,7 +128,7 @@ def vendor_body(f: Facts, decision: str, findings: list[Finding], reason: str | 
     if issues:
         parts.append(_numbered(issues))
     if note:
-        parts.append(f"Note from our AP team:\n  {note}")
+        parts.append("Note from our AP team:\n" + "\n".join(f"  {line}" for line in note.splitlines() if line.strip()))
     if decision == "Reject":
         parts.append("Please don't resend this document. If you believe this is a mistake, reply to your usual "
                      "contact in our AP team.")
@@ -291,16 +290,14 @@ def discard_drafts(db: Session, run_id: str) -> int:
     return len(drafts)
 
 
-def send_back_to_vendor(db: Session, row: Invoice, vendor_findings: list[Finding], reason: str, note: str | None,
-                        reviewer: str) -> Alert:
-    """Reviewer's 'Send to vendor': a vendor alert with their reason, sent now (the reviewer is the approval)."""
+def send_back_to_vendor(db: Session, row: Invoice, subject_line: str, body: str, reviewer: str) -> Alert:
+    """Reviewer's 'Send to vendor': the email they checked and maybe edited, sent now (the reviewer is the approval)."""
     if run_has_fraud(db, row.run_id):
         raise VendorEmailBlocked("This invoice has a fraud finding, so nothing can be sent to the vendor. "
                                  "Finance verifies it by phone instead.")
     company = db.scalar(select(CompanySettings).limit(1))
     facts = Facts(row, company, row.vendor, row.po_id)
-    alert = _new_alert(row.run_id, "Vendor", facts, subject("Vendor", facts, "Hold", False),
-                       vendor_body(facts, "Hold", vendor_findings, reason, note))
+    alert = _new_alert(row.run_id, "Vendor", facts, subject_line, body)
     db.add(alert)
     db.commit()
     deliver(alert)

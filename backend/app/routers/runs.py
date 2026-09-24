@@ -168,22 +168,66 @@ class ReviewBody(BaseModel):
     po_id: str | None = None
     reason: str | None = None
     note: str | None = None
+    reasons: list[str] | None = Field(None, description="send_to_vendor: ticked case codes, plus 'other'")
+    subject: str | None = Field(None, description="send_to_vendor: the email subject as the reviewer left it")
+    body: str | None = Field(None, description="send_to_vendor: the email body as the reviewer left it")
 
 
 @router.post("/runs/{run_id}/review")
-def review_run(run_id: str, body: ReviewBody, background: BackgroundTasks,
+def review_run(run_id: str, payload: ReviewBody, background: BackgroundTasks,
                x_role: str | None = Header(None, description="Procurement / AP clerk / Finance"),
                db: Session = Depends(get_db)):
     """Confirm (resume from stage 3), pick PO (resume from stage 6), override, send to vendor, or reject."""
     try:
-        out = review_service.apply(db, run_id, body.action, x_role, fields=body.fields, po_id=body.po_id,
-                                   reason=body.reason, note=body.note)
+        out = review_service.apply(db, run_id, payload.action, x_role, fields=payload.fields, po_id=payload.po_id,
+                                   reason=payload.reason, note=payload.note, reasons=payload.reasons,
+                                   subject=payload.subject, body=payload.body)
     except review_service.ReviewError as e:
         db.rollback()
         raise HTTPException(e.status, e.message)
     if out.resume_from is not None:
         background.add_task(run_service.resume_run, run_id, out.resume_from)
     return {"run_id": out.run_id, "action": out.action, "status": out.status, "resumed": out.resume_from is not None}
+
+
+class PreviewBody(BaseModel):
+    reasons: list[str] | None = None
+    note: str | None = None
+
+
+def _preview(db: Session, run_id: str, reasons: list[str] | None, note: str | None) -> dict:
+    try:
+        return review_service.email_preview(db, run_id, reasons, note)
+    except review_service.ReviewError as e:
+        raise HTTPException(e.status, e.message)
+
+
+@router.get("/runs/{run_id}/vendor-email-preview")
+def vendor_email_preview(run_id: str, db: Session = Depends(get_db)):
+    """The reason chips, the drafted note and the email with every reason ticked. Nothing is sent."""
+    return _preview(db, run_id, None, None)
+
+
+@router.post("/runs/{run_id}/vendor-email-preview")
+def vendor_email_preview_for(run_id: str, payload: PreviewBody, db: Session = Depends(get_db)):
+    """The email for the reasons and note the reviewer chose. Nothing is sent."""
+    return _preview(db, run_id, payload.reasons, payload.note)
+
+
+@router.post("/runs/{run_id}/corrected", status_code=202)
+async def upload_corrected(run_id: str, request: Request, background: BackgroundTasks,
+                           x_role: str | None = Header(None, description="Procurement / AP clerk / Finance")):
+    """A corrected invoice for a held run: a new run (parent_upload_id = this run), checked from stage 1.
+    This run becomes 'superseded' and leaves the review queue."""
+    data, name = await _read_request(request)
+    try:
+        new_id = await run_in_threadpool(run_service.start_corrected_run, run_id, data, name, x_role)
+    except review_service.ReviewError as e:
+        raise HTTPException(e.status, e.message)
+    except run_service.DailyCapReached as e:
+        raise HTTPException(429, str(e))
+    background.add_task(run_service.execute_run, new_id)
+    return {"run_id": new_id, "replaces": run_id}
 
 
 @router.get("/review-queue")

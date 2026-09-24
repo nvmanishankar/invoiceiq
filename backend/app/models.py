@@ -128,7 +128,7 @@ class Invoice(Base):
     file_name: Mapped[str | None] = mapped_column(String(255))
     file_hash: Mapped[str | None] = mapped_column(String(64), index=True)
     doc_type: Mapped[str | None] = mapped_column(String(30))
-    # running / needs_review / waiting_on_vendor / approved / held / rejected
+    # running / needs_review / waiting_on_vendor / approved / held / rejected / superseded
     status: Mapped[str] = mapped_column(String(30), default="running")
     invoice_no: Mapped[str | None] = mapped_column(String(100))
     invoice_no_norm: Mapped[str | None] = mapped_column(String(100), index=True)

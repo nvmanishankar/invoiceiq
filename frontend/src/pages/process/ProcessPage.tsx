@@ -8,6 +8,7 @@ import { DotMatrix } from "@/components/brand/DotMatrix"
 import { PixelMascot, type MascotState } from "@/components/brand/PixelMascot"
 import { PillButton } from "@/components/ds/PillButton"
 import { PillLink } from "@/components/ds/PillLink"
+import { RunLinks } from "@/components/ds/RunLinks"
 import { SpeechBubble } from "@/components/ds/SpeechBubble"
 import { SplitContainer } from "@/components/ds/SplitContainer"
 import type { Decision } from "@/types"
@@ -41,6 +42,9 @@ export function ProcessPage() {
     enabled: !!runId && settled,
   })
   const run = detail.data
+  // Which run this one replaces (known from the start) or was replaced by, shown while it still streams.
+  const links = useQuery({ queryKey: ["run-links", runId], queryFn: () => getRun(runId!), enabled: !!runId && !run })
+  const lineage = run ?? links.data
   const qc = useQueryClient()
   useEffect(() => {
     // A finished run may have joined the review queue or sent emails.
@@ -55,7 +59,7 @@ export function ProcessPage() {
   const heldForReview = !running && decision?.decision === "Hold" && (run?.status ?? decision.status) === "needs_review"
   const mood: MascotState = running ? "thinking" : decision?.decision ? MOOD[decision.decision] : "idle"
   const activeFile = runId
-    ? (run?.file_name ?? (pending?.runId === runId ? pending.label : null))
+    ? (lineage?.file_name ?? (pending?.runId === runId ? pending.label : null))
     : start.isPending ? (pending?.label ?? null) : null
   const fraudFinding = run?.findings.find((f) => f.fraud)
   const notFound = !!runId && stream.lost && detail.error instanceof ApiError && detail.error.status === 404
@@ -167,6 +171,10 @@ export function ProcessPage() {
               </div>
             </div>
 
+            {lineage && (
+              <RunLinks parent={lineage.parent_upload_id} child={lineage.replaced_by}
+                to={(id) => `/process?run=${encodeURIComponent(id)}`} />
+            )}
             {notFound && <p role="alert" className="text-hold">There's no run called {runId}.</p>}
             {decision && <DecisionCard decision={decision} fraudFinding={fraudFinding} />}
             <Timeline stages={stages} running={running} />

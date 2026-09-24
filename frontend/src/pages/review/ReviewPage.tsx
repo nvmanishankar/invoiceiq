@@ -6,6 +6,7 @@ import { ApiError, getReviewQueue, getRun, runFileUrl } from "@/api"
 import { PixelMascot } from "@/components/brand/PixelMascot"
 import { PillButton } from "@/components/ds/PillButton"
 import { PillLink } from "@/components/ds/PillLink"
+import { RunLinks } from "@/components/ds/RunLinks"
 import { SectionTitle } from "@/components/ds/SectionTitle"
 import { SpeechBubble } from "@/components/ds/SpeechBubble"
 import { SplitContainer } from "@/components/ds/SplitContainer"
@@ -101,9 +102,14 @@ function RunReview({ runId }: { runId: string }) {
   if (!run.data) return null
 
   const done = (id: string) => {
-    // The run changes now (or restarts), so drop the cached copy before the Process page streams it.
-    qc.removeQueries({ queryKey: ["run", id] })
+    // The run changes now (or restarts, or a corrected upload replaces it), so drop the cached copies before the
+    // Process page streams `id`.
+    for (const key of new Set([id, runId])) {
+      qc.removeQueries({ queryKey: ["run", key] })
+      qc.removeQueries({ queryKey: ["vendor-email", key] })
+    }
     qc.invalidateQueries({ queryKey: ["review-queue"] })
+    qc.invalidateQueries({ queryKey: ["runs"] })
     qc.invalidateQueries({ queryKey: ["alerts"] })
     navigate(`/process?run=${encodeURIComponent(id)}`)
   }
@@ -126,16 +132,20 @@ function ReviewDetail({ run, onDone }: { run: RunDetail; onDone: (runId: string)
         <PillButton asChild variant="secondary" className="ml-auto">
           <Link to={`/process?run=${encodeURIComponent(run.run_id)}`}>Open in Process</Link>
         </PillButton>
+        <RunLinks parent={run.parent_upload_id} child={run.replaced_by} to={(id) => `/review/${encodeURIComponent(id)}`} />
       </div>
 
       {!open && (
         <p role="status" className="rounded-card border border-line bg-raised p-5 text-ink">
-          This invoice is {run.status.replace(/_/g, " ")}, so there's nothing to review.
+          {run.status === "superseded"
+            ? "A corrected invoice replaced this one, so there's nothing to review here. Its decision stays on record."
+            : `This invoice is ${run.status.replace(/_/g, " ")}, so there's nothing to review.`}
         </p>
       )}
       {run.status === "waiting_on_vendor" && (
         <p role="status" className="rounded-card border border-hold/40 bg-hold-bg p-5 text-ink">
-          Waiting for the vendor to reply. You can still correct it, override or reject it here.
+          Waiting for the vendor to reply. When their corrected invoice arrives, upload it below. You can still correct
+          it, override or reject it here.
         </p>
       )}
 

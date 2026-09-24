@@ -12,7 +12,8 @@ from app.db import SessionLocal
 from app.models import Invoice, RunStage, utcnow
 from app.pipeline import decide
 from app.pipeline.context import SYSTEM_ERROR
-from app.pipeline.runner import DECISION_ORDER, create_run, load_run, resume_context, run_pipeline
+from app.pipeline.runner import DECISION_ORDER, create_run, load_run, new_run_id, resume_context, run_pipeline
+from app.services import review
 
 log = logging.getLogger(__name__)
 
@@ -58,16 +59,34 @@ def runs_today(db: Session) -> int:
         Invoice.is_seed.is_(False), Invoice.created_at >= midnight))
 
 
+def _check_cap(db: Session) -> None:
+    if runs_today(db) >= settings.MAX_RUNS_PER_DAY:
+        raise DailyCapReached(
+            f"This demo processes up to {settings.MAX_RUNS_PER_DAY} invoices a day and today's "
+            "limit has been reached. Please try again tomorrow, or open an earlier run from the dashboard."
+        )
+
+
 def start_run(file_bytes: bytes, file_name: str | None) -> str:
     """Create the invoices row and store the PDF. The pipeline runs later in execute_run."""
     with SessionLocal() as db:
-        if runs_today(db) >= settings.MAX_RUNS_PER_DAY:
-            raise DailyCapReached(
-                f"This demo processes up to {settings.MAX_RUNS_PER_DAY} invoices a day and today's "
-                "limit has been reached. Please try again tomorrow, or open an earlier run from the dashboard."
-            )
+        _check_cap(db)
         ctx = create_run(db, file_bytes, file_name, today=today(), store_file=True)
         return ctx.run_id
+
+
+def start_corrected_run(parent_id: str, file_bytes: bytes, file_name: str | None, role: str | None) -> str:
+    """A corrected invoice for a held run: a new run linked to it, checked from stage 1. The original is marked
+    superseded in the same commit, so it can't be left in the queue beside its replacement."""
+    with SessionLocal() as db:
+        parent = db.get(Invoice, parent_id)
+        if parent is None:
+            raise review.ReviewError(404, f"Run {parent_id} not found.")
+        _check_cap(db)
+        run_id = new_run_id()
+        review.supersede(db, parent, role, run_id)
+        create_run(db, file_bytes, file_name, today=today(), store_file=True, run_id=run_id, parent_upload_id=parent_id)
+        return run_id
 
 
 def execute_run(run_id: str) -> None:

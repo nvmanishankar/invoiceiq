@@ -228,37 +228,159 @@ def test_finance_can_override_fraud(client):
 
 # --- Send to vendor -------------------------------------------------------------------------------------------------
 
-def test_send_to_vendor(client, emails):
+def preview(client, run_id: str, **body):
+    if body:
+        return client.post(f"/api/runs/{run_id}/vendor-email-preview", json=body)
+    return client.get(f"/api/runs/{run_id}/vendor-email-preview")
+
+
+def send(client, run_id: str, role: str | None = None, **overrides):
+    """Send the drafted email as the preview shows it, with any field overridden."""
+    draft = preview(client, run_id).json()
+    body = {"action": "send_to_vendor", "reasons": draft["selected"], "note": draft["note"],
+            "subject": draft["subject"], "body": draft["body"], **overrides}
+    return review(client, run_id, role, **body)
+
+
+def test_reason_chips_come_from_vendor_findings(client):
+    p = preview(client, run(client, OVERBILL)).json()
+    assert [(r["code"], r["title"]) for r in p["reasons"]] == [("6.5", "Over PO balance"),
+                                                               ("6.6", "Quantity above ordered")]
+    assert p["selected"] == ["6.5", "6.6"]  # all ticked by default
+    assert p["reasons"][0]["messages"] == ["Only ₹1,18,000 remains on PO-2026-101; this invoice is ₹1,41,600."]
+
+    p = preview(client, run(client, NO_DATE)).json()
+    assert [r["code"] for r in p["reasons"]] == ["3.2"] and p["note"] == "Please add the invoice date."
+
+
+def test_drafted_note_for_gst_split_balance_and_quantity(db):
+    from app.services import vendor_email
+
+    row = Invoice(run_id="RUN-NOTE", po_id="PO-2026-101")
+    findings = [
+        {"code": "8.3", "severity": "hold", "message": "IGST applies.", "audience": ["Vendor"],
+         "evidence": {"expected_split": "IGST", "actual_split": "CGST+SGST", "rates": [18.0]}},
+        {"code": "6.5", "severity": "hold", "message": "Only a little remains.", "audience": ["Vendor"],
+         "evidence": {"po_id": "PO-2026-101", "remaining_paise": 11800000}},
+        {"code": "6.6", "severity": "hold", "message": "Too many reams.", "audience": ["Vendor"],
+         "evidence": {"invoice_line": "A4 paper", "po_line": "A4 copier paper", "po_line_no": 1,
+                      "already": 1500, "this_invoice": 600, "ordered": 2000}},
+    ]
+    chips = vendor_email.reason_chips(db, row, findings)
+    assert [c["title"] for c in chips] == ["Wrong GST split", "Over PO balance", "Quantity above ordered"]
+    assert vendor_email.draft_note(chips, ["8.3", "6.5", "6.6"]).splitlines() == [
+        "Please reissue with IGST at 18% instead of CGST + SGST.",
+        "Only ₹1,18,000 remains on PO-2026-101; please bill no more than that.",
+        "Only 500 reams of A4 copier paper remain on PO-2026-101; please bill no more than that.",
+    ]
+    assert vendor_email.draft_note(chips, ["6.5"]) == "Only ₹1,18,000 remains on PO-2026-101; please bill no more than that."
+
+
+def test_drafted_note_for_the_wrong_split_sample(client):
+    p = preview(client, run(client, "08_extra_wrong_split_brighttech.pdf")).json()
+    assert p["note"] == "Please reissue with IGST at 18% instead of CGST + SGST."
+
+
+def test_preview_follows_the_chosen_reasons_and_sends_nothing(client, emails):
     run_id = run(client, OVERBILL)
     emails.clear()
-    r = review(client, run_id, action="send_to_vendor", reason="Missing information",
-               note="Please split the invoice: 2,000 reams on PO-2026-101 only.")
+    full = preview(client, run_id).json()
+    assert full["subject"] == "[InvoiceIQ → Vendor: Acme Supplies] Invoice ACME/2026/0417 needs a correction"
+    assert "Only ₹1,18,000 remains on PO-2026-101; this invoice is ₹1,41,600." in full["body"]
+    assert "Only 500 reams of A4 copier paper" in full["body"]  # the drafted note, from 6.6's evidence
+
+    one = preview(client, run_id, reasons=["6.5"]).json()
+    assert one["selected"] == ["6.5"] and "2,100 invoiced in total" not in one["body"]
+    assert one["note"] == one["drafted_note"] == "Only ₹1,18,000 remains on PO-2026-101; please bill no more than that."
+
+    mine = preview(client, run_id, reasons=["6.5", "other"], note="Split it into two invoices, please.").json()
+    assert "  Split it into two invoices, please." in mine["body"] and mine["note"] != mine["drafted_note"]
+
+    assert preview(client, run_id, reasons=[]).status_code == 422  # at least one reason
+    assert preview(client, run_id, reasons=["other"], note=" ").status_code == 422  # Other needs a note
+    assert preview(client, run_id, reasons=["4.7"]).status_code == 422  # not a vendor reason on this run
+    assert emails == [] and detail(client, run_id)["status"] == "needs_review"
+    assert preview(client, run(client, HAPPY)).status_code == 409  # nothing to send on an approved run
+
+
+def test_send_to_vendor_sends_the_edited_email(client, emails):
+    run_id = run(client, OVERBILL)
+    emails.clear()
+    draft = preview(client, run_id).json()
+    subject = "Invoice ACME/2026/0417: please split it"
+    body = draft["body"].replace("Please reply with a corrected invoice.", "Please send two invoices instead.")
+    r = review(client, run_id, "AP clerk", action="send_to_vendor", reasons=["6.5", "6.6"], note=draft["note"],
+               subject=f"  {subject} ", body=body)
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "waiting_on_vendor"
 
+    assert emails == [{"subject": subject, "body": body.strip()}]  # exactly what the reviewer left
     d = detail(client, run_id)
     assert d["status"] == "waiting_on_vendor" and d["decision"]["decision"] == "Hold"
-    (email,) = emails
-    assert email["subject"].startswith("[InvoiceIQ → Vendor: Acme Supplies]")
-    assert "Missing information." in email["body"] and "Please split the invoice" in email["body"]
-    assert "Only ₹1,18,000 remains on PO-2026-101" in email["body"]
+    alert = [a for a in d["alerts"] if a["audience"] == "Vendor"][-1]  # after the run's own auto-sent one
+    assert alert["subject"] == subject and alert["status"] == "Sent" and alert["intended_for"].endswith("(accounts)")
     rev = d["reviews"][0]
-    assert rev["action"] == "send_to_vendor" and rev["reason"].startswith("Missing information: Please split")
+    assert rev["action"] == "send_to_vendor" and rev["reason"] == "Over PO balance, Quantity above ordered"
+    email = rev["field_changes"]["email"]
+    assert email["subject"] == subject and email["body"] == body.strip() and email["reasons"] == ["6.5", "6.6"]
+    assert email["email_edited"] is True and email["note_edited"] is False
     assert rev["field_changes"]["status"]["after"] == "waiting_on_vendor"
     assert client.get("/api/review-queue").json()["count"] == 0
 
 
-def test_send_to_vendor_validates_reason(client):
+def test_send_to_vendor_records_an_unedited_draft(client, emails):
+    run_id = run(client, NO_DATE)
+    emails.clear()
+    assert send(client, run_id).status_code == 200
+    email = detail(client, run_id)["reviews"][0]["field_changes"]["email"]
+    assert email["email_edited"] is False and email["note_edited"] is False
+    assert emails[0]["body"] == email["body"] and "Please add the invoice date." in email["body"]
+
+
+def test_send_to_vendor_records_an_edited_note(client):
+    run_id = run(client, NO_DATE)
+    note = "Please add the invoice date; we can't pay an undated invoice."
+    draft = preview(client, run_id, reasons=["3.2"], note=note).json()
+    assert send(client, run_id, note=note, subject=draft["subject"], body=draft["body"]).status_code == 200
+    email = detail(client, run_id)["reviews"][0]["field_changes"]["email"]
+    assert email["note_edited"] is True and email["email_edited"] is False and email["note"] == note
+
+
+@pytest.mark.parametrize("overrides, why", [
+    ({"subject": "  "}, "subject"),
+    ({"body": ""}, "body"),
+    ({"subject": "x" * 201}, "subject is longer"),
+    ({"body": "x" * 10_001}, "longer than"),
+    ({"reasons": []}, "at least one reason"),
+    ({"reasons": None}, "at least one reason"),
+    ({"reasons": ["other"], "note": ""}, "add a note"),
+    ({"reasons": ["Unreadable scan"]}, "aren't on this invoice"),
+])
+def test_send_to_vendor_validates(client, emails, overrides, why):
     run_id = run(client, OVERBILL)
-    assert review(client, run_id, action="send_to_vendor", reason="Because").status_code == 422
-    assert review(client, run_id, action="send_to_vendor", reason="Other").status_code == 422  # note required
-    assert review(client, run_id, action="send_to_vendor", reason="Other", note="Wrong address").status_code == 200
+    emails.clear()
+    r = send(client, run_id, **overrides)
+    assert r.status_code == 422 and why in r.json()["detail"]
+    assert emails == [] and detail(client, run_id)["status"] == "needs_review"
+
+
+def test_send_to_vendor_with_other_and_a_note(client, emails):
+    run_id = run(client, OVERBILL)
+    emails.clear()
+    draft = preview(client, run_id, reasons=["other"], note="Wrong billing address.").json()
+    r = send(client, run_id, reasons=["other"], note="Wrong billing address.", subject=draft["subject"],
+             body=draft["body"])
+    assert r.status_code == 200, r.text
+    assert detail(client, run_id)["reviews"][0]["reason"] == "Other"
+    assert "Wrong billing address." in emails[0]["body"] and "remains on PO-2026-101" not in emails[0]["body"]
 
 
 def test_send_to_vendor_refused_on_fraud(client, emails):
     run_id = run(client, FRAUD)
     emails.clear()
-    r = review(client, run_id, "Finance", action="send_to_vendor", reason="Missing information", note="x")
+    assert preview(client, run_id).status_code == 409
+    r = review(client, run_id, "Finance", action="send_to_vendor", reasons=["other"], note="x",
+               subject="Please call us", body="Your bank details changed.")
     assert r.status_code == 409 and "fraud" in r.json()["detail"]
     assert emails == [] and detail(client, run_id)["status"] == "needs_review"
 
@@ -267,8 +389,77 @@ def test_send_to_vendor_replaces_an_unsent_draft(client, emails, monkeypatch):
     monkeypatch.setattr(settings, "VENDOR_AUTO_SEND", False)
     run_id = run(client, OVERBILL)
     assert [a["status"] for a in detail(client, run_id)["alerts"]] == ["Drafted"]
-    review(client, run_id, action="send_to_vendor", reason="Unreadable scan")
+    send(client, run_id)
     assert [a["status"] for a in detail(client, run_id)["alerts"]] == ["Sent"]
+
+
+# --- Corrected invoice ----------------------------------------------------------------------------------------------
+
+def upload_corrected(client, run_id: str, name: str, role: str | None = None):
+    headers = {"X-Role": role} if role else {}
+    return client.post(f"/api/runs/{run_id}/corrected", json={"sample_name": name}, headers=headers)
+
+
+def test_corrected_upload_supersedes_the_original(client):
+    original = run(client, OVERBILL)
+    assert send(client, original).status_code == 200
+    assert detail(client, original)["status"] == "waiting_on_vendor"
+
+    # The vendor sends the same PDF back: the worst case for the duplicate check.
+    r = upload_corrected(client, original, OVERBILL, "AP clerk")
+    assert r.status_code == 202, r.text
+    new = r.json()["run_id"]
+    assert new != original and r.json()["replaces"] == original
+
+    old = detail(client, original)
+    assert old["status"] == "superseded" and old["decision"]["decision"] == "Hold"  # decision unchanged
+    assert old["replaced_by"] == new and old["parent_upload_id"] is None
+    last = old["reviews"][-1]
+    assert last["action"] == "upload_corrected" and last["reviewer"] == "AP clerk" and new in last["reason"]
+    assert last["field_changes"]["status"] == {"label": "Status", "before": "waiting_on_vendor", "after": "superseded"}
+
+    events = read_stream(client, new)
+    assert [d["order"] for k, d in events if k == "stage"] == list(range(1, 11))  # checked fully, from stage 1
+    fresh = detail(client, new)
+    assert fresh["parent_upload_id"] == original and fresh["replaced_by"] is None
+    assert {"6.5", "6.6"} <= codes(fresh)
+    assert not codes(fresh) & {"7.1", "7.2", "7.3", "7.4"}  # not a duplicate of the run it replaces
+    assert fresh["status"] == "needs_review"
+
+    queue = [q["run_id"] for q in client.get("/api/review-queue").json()["runs"]]
+    assert queue == [new]
+    assert [r["status"] for r in client.get("/api/runs", params={"status": "superseded"}).json()] == ["superseded"]
+    kpis = client.get("/api/stats").json()["kpis"]
+    assert kpis["open_review"] == 1 and kpis["waiting_on_vendor"] == 0
+
+    # A superseded run is closed: no second replacement, no review.
+    assert upload_corrected(client, original, OVERBILL).status_code == 409
+    assert review(client, original, action="reject", reason="x").status_code == 409
+
+    # The same file sent again as a new upload (not a correction) is still caught, against the live replacement.
+    again = detail(client, run(client, OVERBILL))
+    assert "7.1" in codes(again) and any(new in f["message"] for f in again["findings"] if f["code"] == "7.1")
+
+
+def test_corrected_upload_from_the_review_queue(client):
+    original = run(client, NO_DATE)
+    r = upload_corrected(client, original, HAPPY)
+    assert r.status_code == 202, r.text
+    read_stream(client, r.json()["run_id"])
+    assert detail(client, original)["status"] == "superseded"
+    assert detail(client, r.json()["run_id"])["decision"]["decision"] == "Approve"
+
+
+def test_corrected_upload_guards(client):
+    approved = run(client, HAPPY)
+    assert upload_corrected(client, approved, HAPPY).status_code == 409
+    assert upload_corrected(client, "RUN-NOPE", HAPPY).status_code == 404
+    fraud = run(client, FRAUD)
+    r = upload_corrected(client, fraud, FRAUD, "AP clerk")
+    assert r.status_code == 403 and "Only Finance" in r.json()["detail"]
+    assert detail(client, fraud)["status"] == "needs_review"
+    with SessionLocal() as db:  # the refused upload left nothing behind
+        assert db.query(Invoice).filter(Invoice.parent_upload_id == fraud).count() == 0
 
 
 # --- Reject ---------------------------------------------------------------------------------------------------------

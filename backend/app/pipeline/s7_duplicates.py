@@ -6,6 +6,8 @@ from app.config import NEAR_DUPLICATE_DAYS
 from app.models import Invoice
 from app.pipeline.context import RunContext, StageResult, summarise
 from app.services.po import APPROVED
+
+SUPERSEDED = "superseded"  # services.review.SUPERSEDED; imported from there it would be circular
 from app.utils.money import format_inr
 from app.utils.normalise import core_number, norm_full
 
@@ -22,10 +24,14 @@ def run(ctx: RunContext) -> StageResult:
     inv = ctx.inv
     before = len(ctx.findings)
     linked: list[str] = []
+    # A corrected invoice isn't a duplicate of the run it replaces, nor of any run a correction already replaced.
+    me = ctx.db.get(Invoice, ctx.run_id)
+    skip = [ctx.run_id] + ([me.parent_upload_id] if me is not None and me.parent_upload_id else [])
+    live = (Invoice.run_id.not_in(skip), Invoice.status != SUPERSEDED)
 
     # 7.1: this exact file, any vendor. Rejected runs don't count: a rejected file may be sent again.
     same_file = ctx.db.scalars(select(Invoice).where(
-        Invoice.file_hash == ctx.file_hash, Invoice.run_id != ctx.run_id,
+        Invoice.file_hash == ctx.file_hash, *live,
         Invoice.decision.is_not(None), Invoice.decision != "Reject").order_by(Invoice.created_at)).first()
     if same_file is not None:
         sev = "reject" if same_file.decision == APPROVED else "hold"
@@ -34,7 +40,7 @@ def run(ctx: RunContext) -> StageResult:
         linked.append(same_file.run_id)
 
     priors = [] if ctx.vendor is None else ctx.db.scalars(select(Invoice).where(
-        Invoice.vendor_id == ctx.vendor.vendor_id, Invoice.run_id != ctx.run_id,
+        Invoice.vendor_id == ctx.vendor.vendor_id, *live,
         Invoice.decision.is_not(None), Invoice.decision != "Reject").order_by(Invoice.invoice_date)).all()
     no_full, no_core = norm_full(inv.invoice_no), core_number(inv.invoice_no)
     for prior in priors:

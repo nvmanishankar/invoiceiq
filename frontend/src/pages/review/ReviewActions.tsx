@@ -8,16 +8,18 @@ import { PillButton } from "@/components/ds/PillButton"
 import { cn } from "@/lib/utils"
 import { useRole } from "@/role"
 import type { ReviewAction, RunDetail } from "@/types"
+import { CorrectedUpload } from "./CorrectedUpload"
+import { SendToVendor } from "./SendToVendor"
 
-const SEND_BACK_REASONS = ["Unreadable scan", "Missing information", "Other"] as const
 const PO_CODES = new Set(["5.3", "5.8", "5.9", "5.10"])
 const FIELD_CODES = new Set(["2.2", "3.1", "3.2", "3.3", "sys"])
 
-type Key = "confirm" | "pick_po" | "override" | "send_to_vendor" | "reject"
+type Key = "confirm" | "pick_po" | "override" | "send_to_vendor" | "reject" | "corrected"
 
 /** Which action fits the findings best; that one opens first. */
 function suggested(run: RunDetail): Key | null {
   const holds = run.findings.filter((f) => f.severity === "hold")
+  if (run.status === "waiting_on_vendor" && !holds.some((f) => f.fraud)) return "corrected"
   if (holds.some((f) => f.fraud)) return null
   if (holds.some((f) => FIELD_CODES.has(f.code))) return "confirm"
   if (holds.some((f) => PO_CODES.has(f.code))) return "pick_po"
@@ -43,6 +45,7 @@ export function ReviewActions({
 }: {
   run: RunDetail
   changes: Record<string, string | null>
+  /** Called with the run to watch next: this one after an action, or the new run after a corrected upload. */
   onDone: (runId: string) => void
 }) {
   const { role } = useRole()
@@ -100,7 +103,16 @@ export function ReviewActions({
         {fraud ? (
           <Blocked>There's a fraud finding, so nothing goes to the vendor. Finance verifies it by phone instead.</Blocked>
         ) : (
-          <SendBack busy={busy} onSend={(reason, note) => act.mutate({ action: "send_to_vendor", reason, note })} />
+          <SendToVendor runId={run.run_id} busy={busy} onSend={(email) => act.mutate({ action: "send_to_vendor", ...email })} />
+        )}
+      </Action>
+
+      <Action title="Upload corrected invoice" note={fraud && role !== "Finance" ? "Finance only on this invoice" : "Replaces this run"}
+        open={pick === "corrected"} suggested={pick === "corrected"}>
+        {fraud && role !== "Finance" ? (
+          <Blocked>This invoice has a fraud finding. Only Finance can replace it, after calling the vendor on the number on file. Switch the role to Finance to continue.</Blocked>
+        ) : (
+          <CorrectedUpload runId={run.run_id} onStarted={onDone} />
         )}
       </Action>
 
@@ -201,35 +213,6 @@ function PickPo({ run, busy, onPick }: { run: RunDetail; busy: boolean; onPick: 
       <p className="text-[14px] text-ink-2">Amounts, duplicates, tax and dates are checked again against this PO (steps 6 to 9).</p>
       <Row>
         <PillButton type="submit" disabled={busy || !po.trim()}>Use this PO</PillButton>
-      </Row>
-    </form>
-  )
-}
-
-function SendBack({ busy, onSend }: { busy: boolean; onSend: (reason: string, note?: string) => void }) {
-  const [reason, setReason] = useState<string>("Missing information")
-  const [note, setNote] = useState("")
-  const needsNote = reason === "Other" && !note.trim()
-  return (
-    <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); if (!needsNote) onSend(reason, note.trim() || undefined) }}>
-      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Reason">
-        {SEND_BACK_REASONS.map((r) => (
-          <button key={r} type="button" role="radio" aria-checked={reason === r} onClick={() => setReason(r)}
-            className={cn("h-10 rounded-full border bg-raised px-4 text-[14px] text-ink transition-colors",
-              reason === r ? "border-ink" : "border-line hover:border-ink-3")}>
-            {r}
-          </button>
-        ))}
-      </div>
-      <label className="flex flex-col gap-1.5">
-        <span className="label">Note to the vendor{reason === "Other" ? "" : " (optional)"}</span>
-        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2}
-          placeholder="e.g. Please reissue with 2,000 reams, the quantity on the PO."
-          className={cn(inputCls, "h-auto py-3 leading-relaxed")} />
-      </label>
-      <p className="text-[14px] text-ink-2">The email lists every issue for the vendor, and the invoice waits for their reply.</p>
-      <Row>
-        <PillButton type="submit" disabled={busy || needsNote}>Send to vendor</PillButton>
       </Row>
     </form>
   )

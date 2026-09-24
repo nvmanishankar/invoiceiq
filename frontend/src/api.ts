@@ -11,6 +11,7 @@ import type {
   Sample,
   SettingsInput,
   Stats,
+  VendorEmailPreview,
   SuiteRun,
   TaxRate,
   VendorInput,
@@ -86,6 +87,22 @@ export const reviewRun = (runId: string, action: ReviewAction, role: string) =>
     action,
     { "X-Role": role },
   )
+
+/** The vendor email a reviewer would send: GET for the defaults, POST for chosen reasons and note. Nothing is sent. */
+export const getVendorEmailPreview = (runId: string) =>
+  getJson<VendorEmailPreview>(`/api/runs/${encodeURIComponent(runId)}/vendor-email-preview`)
+export const previewVendorEmail = (runId: string, body: { reasons: string[]; note: string }) =>
+  postJson<VendorEmailPreview>(`/api/runs/${encodeURIComponent(runId)}/vendor-email-preview`, body)
+
+/** A corrected PDF for a held run: a new run that replaces it. The original becomes "superseded". */
+export async function uploadCorrected(runId: string, file: File, role: string): Promise<{ run_id: string; replaces: string }> {
+  const form = new FormData()
+  form.append("file", file)
+  const res = await check(await fetch(`/api/runs/${encodeURIComponent(runId)}/corrected`, {
+    method: "POST", headers: { "X-Role": role }, body: form,
+  }))
+  return res.json()
+}
 
 export const getAlerts = () => getJson<AlertRow[]>("/api/alerts")
 export const sendAlert = (alertId: number) => postJson<AlertRow>(`/api/alerts/${alertId}/send`)

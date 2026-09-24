@@ -45,6 +45,7 @@ def run_summary(inv: Invoice) -> dict:
         "created_at": _iso(inv.created_at),
         "finished_at": _iso(inv.finished_at),
         "is_seed": inv.is_seed,
+        "parent_upload_id": inv.parent_upload_id,
     }
 
 
@@ -251,4 +252,6 @@ def run_detail(db: Session, inv: Invoice) -> dict:
         "po": po,
         "comparison": comparison(lines, po),
         "has_file": db.scalar(select(RunFile.run_id).where(RunFile.run_id == inv.run_id)) is not None,
+        "replaced_by": db.scalar(select(Invoice.run_id).where(Invoice.parent_upload_id == inv.run_id)
+                                 .order_by(Invoice.created_at.desc()).limit(1)),
     }

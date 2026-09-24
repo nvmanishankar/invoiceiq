@@ -2,7 +2,7 @@
 
 Every action is logged in `reviews` with before/after values. Confirm and pick_po rewind the run
 and hand back the stage to resume from; the caller runs the rest in the background, and the
-existing SSE stream shows it live. Override, send_to_vendor and reject close or park the run here.
+existing SSE stream shows it live. Override, send_to_vendor and reject close or park the run here; a corrected upload supersedes it.
 """
 
 from dataclasses import dataclass
@@ -15,15 +15,17 @@ from sqlalchemy.orm import Session
 from app import alerts
 from app.models import Invoice, PurchaseOrder, Review, RunStage, clip, utcnow
 from app.pipeline.context import code_label
-from app.pipeline.runner import DECISION_ORDER, HALTING_STAGES, stored_finding
+from app.pipeline.runner import DECISION_ORDER, HALTING_STAGES
 from app.pipeline.s2_extract import write_invoice_row
 from app.roles import DEFAULT_ROLE
 from app.roles import FINANCE as FINANCE_ROLE
 from app.schemas import ExtractedInvoice
+from app.services import vendor_email
 from app.utils.money import format_inr
 
 ACTIONS = ("confirm", "pick_po", "override", "send_to_vendor", "reject")
 REVIEWABLE = ("needs_review", "waiting_on_vendor")
+SUPERSEDED = "superseded"  # a corrected invoice replaced this run; its decision stays as it was
 RESUME_AFTER_CONFIRM = HALTING_STAGES  # stages 1-2 are kept; 3 onwards runs again
 RESUME_AFTER_PICK_PO = 5  # stages 1-5 are kept; 6 onwards runs again
 PICKED_MATCH_TYPE = "Explicit (reviewer)"
@@ -248,34 +250,60 @@ def reject(db: Session, row: Invoice, stages: list[RunStage], role: str, reason:
     return Outcome(row.run_id, "reject", row.status)
 
 
-def send_to_vendor(db: Session, row: Invoice, stages: list[RunStage], role: str, reason: str | None,
-                   note: str | None) -> Outcome:
-    reason = _required(reason, "reason")
-    if reason not in alerts.SEND_BACK_REASONS:
-        raise ReviewError(422, f"The reason should be one of: {', '.join(alerts.SEND_BACK_REASONS)}.")
-    note = (note or "").strip() or None
-    if reason == "Other" and not note:
-        raise ReviewError(422, "Please add a note telling the vendor what to fix.")
+def send_to_vendor(db: Session, row: Invoice, stages: list[RunStage], role: str, reasons: list[str] | None,
+                   note: str | None, subject: str | None, body: str | None) -> Outcome:
     if _has_fraud(stages):
         raise ReviewError(409, "This invoice has a fraud finding, so nothing goes to the vendor. Finance verifies it "
                                "by phone on the number on file.")
-    vendor_findings = [stored_finding(f) for f in _findings(stages)
-                       if "Vendor" in (f.get("audience") or []) and f["severity"] in ("hold", "reject")]
+    try:
+        email = vendor_email.final_email(db, row, stages, reasons if reasons is not None else [], note, subject, body)
+    except vendor_email.EmailError as e:
+        raise ReviewError(e.status, e.message)
     changes = _close(row, row.decision or "Hold", "waiting_on_vendor")
+    changes["email"] = {"label": "Email to vendor", **email}
     _restamp_decision(_decision_stage(stages), row.decision, "waiting_on_vendor", "warn",
-                      f"Sent back to the vendor by {role}: {reason}.")
+                      f"Sent back to the vendor by {role}: {email['reasons_text']}.")
     alerts.discard_drafts(db, row.run_id)
-    _log(db, row.run_id, role, "send_to_vendor", f"{reason}: {note}" if note else reason, changes)
+    _log(db, row.run_id, role, "send_to_vendor", email["reasons_text"], changes)
     db.commit()
     try:
-        alerts.send_back_to_vendor(db, row, vendor_findings, reason, note, role)
+        alerts.send_back_to_vendor(db, row, email["subject"], email["body"], role)
     except alerts.VendorEmailBlocked as e:  # _has_fraud already checked; this is the last line of defence
         raise ReviewError(409, str(e))
     return Outcome(row.run_id, "send_to_vendor", row.status)
 
 
+def supersede(db: Session, row: Invoice, role: str | None, new_run_id: str) -> None:
+    """A corrected invoice replaces this run: it leaves the queue, keeps its decision, and the change is logged.
+    The caller commits it together with the new run."""
+    role = (role or "").strip() or DEFAULT_ROLE
+    if row.status not in REVIEWABLE:
+        raise ReviewError(409, f"{row.run_id} is {row.status.replace('_', ' ')}, so it can't be replaced.")
+    if _has_fraud(_stages(db, row.run_id)) and role != FINANCE_ROLE:
+        raise ReviewError(403, "This invoice has a fraud finding. Only Finance can replace it, after verifying the "
+                               "vendor by phone on the number on file.")
+    changes = {"status": {"label": "Status", "before": row.status, "after": SUPERSEDED},
+               "replaced_by": {"label": "Replaced by", "before": None, "after": new_run_id}}
+    row.status = SUPERSEDED
+    alerts.discard_drafts(db, row.run_id)
+    _log(db, row.run_id, role, "upload_corrected", f"Corrected invoice uploaded as {new_run_id}", changes)
+
+
+def email_preview(db: Session, run_id: str, reasons: list[str] | None = None, note: str | None = None) -> dict:
+    row = db.get(Invoice, run_id)
+    if row is None:
+        raise ReviewError(404, f"Run {run_id} not found.")
+    if row.status not in REVIEWABLE:
+        raise ReviewError(409, f"{run_id} is {row.status.replace('_', ' ')}, so there's nothing to send.")
+    try:
+        return vendor_email.preview(db, row, _stages(db, run_id), reasons, note)
+    except vendor_email.EmailError as e:
+        raise ReviewError(e.status, e.message)
+
+
 def apply(db: Session, run_id: str, action: str, role: str | None, *, fields: dict | None = None,
-          po_id: str | None = None, reason: str | None = None, note: str | None = None) -> Outcome:
+          po_id: str | None = None, reason: str | None = None, note: str | None = None,
+          reasons: list[str] | None = None, subject: str | None = None, body: str | None = None) -> Outcome:
     role = (role or "").strip() or DEFAULT_ROLE
     row = db.get(Invoice, run_id)
     if row is None:
@@ -294,7 +322,7 @@ def apply(db: Session, run_id: str, action: str, role: str | None, *, fields: di
     elif action == "reject":
         out = reject(db, row, stages, role, reason)
     else:
-        out = send_to_vendor(db, row, stages, role, reason, note)
+        out = send_to_vendor(db, row, stages, role, reasons, note, subject, body)
     if out.resume_from is not None:
         alerts.discard_drafts(db, run_id)
     db.commit()

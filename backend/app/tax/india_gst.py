@@ -52,7 +52,7 @@ class IndiaGST:
         expected = "None" if nil else "CGST+SGST" if same_state else "IGST"
         actual = actual_split(inv.cgst_paise, inv.sgst_paise, inv.igst_paise)
         details = {"vendor_state": vendor_state, "company_state": company.state_code, "expected_split": expected,
-                   "actual_split": actual, "tax_paise": tax}
+                   "actual_split": actual, "tax_paise": tax, "rates": sorted(set(rates))}
 
         if actual != expected:
             ctx.add("8.3", "hold", f"{vendor.name} is in {state_label(vendor_state)} and we are in "

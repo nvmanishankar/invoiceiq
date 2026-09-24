@@ -1,6 +1,7 @@
 """Runs the stages in order and writes one run_stages row per stage (build guide section 8)."""
 
 import hashlib
+import json
 import time
 import uuid
 from collections.abc import Callable
@@ -51,10 +52,11 @@ def new_run_id() -> str:
 
 
 def create_run(db: Session, file_bytes: bytes, file_name: str | None = None, today: date | None = None,
-               store_file: bool = False) -> RunContext:
+               store_file: bool = False, run_id: str | None = None, parent_upload_id: str | None = None) -> RunContext:
+    """The invoices row (and the file). Anything else pending on `db` is committed with it."""
     company = db.scalar(select(CompanySettings).limit(1))
     ctx = RunContext(
-        run_id=new_run_id(),
+        run_id=run_id or new_run_id(),
         file_bytes=file_bytes,
         file_hash=file_hash(file_bytes),
         company=company,
@@ -62,8 +64,8 @@ def create_run(db: Session, file_bytes: bytes, file_name: str | None = None, tod
         file_name=file_name,
         today=today or date.today(),
     )
-    db.add(Invoice(run_id=ctx.run_id, file_name=clip(Invoice, "file_name", file_name), file_hash=ctx.file_hash,
-                   status="running"))
+    db.add(Invoice(run_id=ctx.run_id, parent_upload_id=parent_upload_id, file_name=clip(Invoice, "file_name", file_name),
+                   file_hash=ctx.file_hash, status="running"))
     if store_file:
         db.add(RunFile(run_id=ctx.run_id, file_name=clip(RunFile, "file_name", file_name), size=len(file_bytes),
                        data=file_bytes))
@@ -89,7 +91,8 @@ def load_run(db: Session, run_id: str, today: date | None = None) -> RunContext:
 
 
 def stored_finding(d: dict) -> Finding:
-    return Finding(d["code"], d["severity"], d["message"], list(d.get("audience") or []), {}, bool(d.get("fraud")))
+    return Finding(d["code"], d["severity"], d["message"], list(d.get("audience") or []), dict(d.get("evidence") or {}),
+                   bool(d.get("fraud")))
 
 
 def resume_context(db: Session, run_id: str, start_at: int, today: date | None = None) -> RunContext:
@@ -129,8 +132,12 @@ def pad_to_min_duration(t0: float, min_ms: int) -> None:
 
 
 def finding_dict(f: Finding) -> dict:
-    return {"code": f.code, "label": f.label, "severity": f.severity, "message": f.message,
-            "audience": f.audience, "fraud": f.fraud}
+    d = {"code": f.code, "label": f.label, "severity": f.severity, "message": f.message,
+         "audience": f.audience, "fraud": f.fraud}
+    if "Vendor" in f.audience and f.evidence:
+        # Kept so a reviewer's email to the vendor can be drafted from the numbers (services/vendor_email.py).
+        d["evidence"] = json.loads(json.dumps(f.evidence, default=str))
+    return d
 
 
 def save_stage(ctx: RunContext, order: int, name: str, result: StageResult, t0: float,

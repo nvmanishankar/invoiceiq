@@ -113,6 +113,8 @@ export type RunDetail = {
   po: PoView | null
   comparison: ComparisonRow[]
   has_file: boolean
+  parent_upload_id: string | null
+  replaced_by: string | null
 }
 
 export type AlertStatus = "Drafted" | "Sent" | "Failed"
@@ -181,15 +183,43 @@ export type RunSummary = {
   total_display: string | null
   top_reason: string | null
   created_at: string | null
+  parent_upload_id?: string | null
 }
 
 export type ReviewQueue = { count: number; runs: RunSummary[] }
+
+/** One reason chip: a case code on this run the vendor can fix, and the note lines drafted from its evidence. */
+export type VendorReason = { code: string; title: string; messages: string[]; suggestions: string[] }
+
+export type VendorEmailPreview = {
+  run_id: string
+  reasons: VendorReason[]
+  selected: string[]
+  drafted_note: string
+  note: string
+  subject: string
+  body: string
+  intended_for: string
+  limits: { subject: number; body: number; note: number }
+}
+
+/** What a send-to-vendor review stored about the email that went out. */
+export type SentEmail = {
+  label?: string
+  reasons: string[]
+  reasons_text: string
+  note: string
+  subject: string
+  body: string
+  note_edited: boolean
+  email_edited: boolean
+}
 
 export type ReviewAction =
   | { action: "confirm"; fields: Record<string, string | number | null> }
   | { action: "pick_po"; po_id: string }
   | { action: "override"; reason: string }
-  | { action: "send_to_vendor"; reason: string; note?: string }
+  | { action: "send_to_vendor"; reasons: string[]; note: string; subject: string; body: string }
   | { action: "reject"; reason: string }
 
 export type Money = { paise: number; display: string }
