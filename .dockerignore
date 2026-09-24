@@ -1,10 +1,13 @@
+# Patterns are matched from the build context root, so nested files need **/.
 .git
-.env
+**/.env
 **/.venv
 **/__pycache__
 **/.pytest_cache
 **/node_modules
 frontend/dist
 backend/static
-*.db
+**/*.db
+**/*.db-shm
+**/*.db-wal
 **/.DS_Store
