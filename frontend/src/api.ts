@@ -11,6 +11,7 @@ import type {
   Sample,
   SettingsInput,
   Stats,
+  SuiteRun,
   TaxRate,
   VendorInput,
   VendorRow,
@@ -114,5 +115,10 @@ export const setVendorStatus = (vendorId: string, status: "Active" | "Blocked", 
   postJson<VendorRow>(`/api/vendors/${encodeURIComponent(vendorId)}`, { status }, { "X-Role": role }, "PATCH")
 
 export const getSettings = () => getJson<AppSettings>("/api/settings")
-export const updateSettings = (body: SettingsInput) => postJson<AppSettings>("/api/settings", body, {}, "PATCH")
+/** Tolerance changes are Finance-only; the server checks the role. */
+export const updateSettings = (body: SettingsInput, role: string) =>
+  postJson<AppSettings>("/api/settings", body, { "X-Role": role }, "PATCH")
 export const resetDemo = () => postJson<{ ok: boolean; message: string }>("/api/admin/reset", { confirm: "RESET" })
+
+/** Every sample on a scratch copy of the data: nothing live is touched and no email is sent. */
+export const runTestSuite = () => postJson<SuiteRun>("/api/admin/test-suite")

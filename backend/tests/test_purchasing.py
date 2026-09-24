@@ -15,6 +15,7 @@ from app.utils.money import rupees_to_paise
 from tests.helpers import TODAY, run_rules, run_sample
 
 PROCUREMENT = {"X-Role": "Procurement"}
+FINANCE = {"X-Role": "Finance"}
 NEW_GSTIN = "29AAKCN4455P1Z" + gstin_checksum("29AAKCN4455P1Z")  # Karnataka, so IGST from Telangana
 
 
@@ -290,7 +291,8 @@ def test_settings_read_and_update(client):
     assert s["company"]["name"] == "Nimbus Retail Pvt Ltd" and s["company"]["state"] == "Telangana (36)"
     assert s["tolerance_pct"] == 2 and s["tolerance_cap_display"] == "₹5,000" and s["vendor_auto_send"] is True
 
-    r = client.patch("/api/settings", json={"tolerance_pct": 1.5, "tolerance_cap": 2500, "vendor_auto_send": False})
+    r = client.patch("/api/settings", json={"tolerance_pct": 1.5, "tolerance_cap": 2500, "vendor_auto_send": False},
+                     headers=FINANCE)
     assert r.status_code == 200, r.text
     assert r.json()["tolerance_pct"] == 1.5 and r.json()["tolerance_cap_paise"] == 250000
     assert r.json()["vendor_auto_send"] is False
@@ -298,7 +300,7 @@ def test_settings_read_and_update(client):
         c = db.scalar(select(CompanySettings))
         assert c.tolerance_pct == 0.015 and c.tolerance_abs_paise == 250000
 
-    bad = client.patch("/api/settings", json={"tolerance_pct": 50, "tolerance_cap": -1})
+    bad = client.patch("/api/settings", json={"tolerance_pct": 50, "tolerance_cap": -1}, headers=FINANCE)
     assert bad.status_code == 422 and set(bad.json()["errors"]) == {"tolerance_pct", "tolerance_cap"}
     assert client.get("/api/settings").json()["tolerance_pct"] == 1.5  # nothing half-applied
     # Company details are read-only: unknown fields are ignored.
@@ -332,7 +334,7 @@ def test_tolerance_change_affects_the_next_run(client, db):
     before = run_rules(db, overbilled_conference_tables())  # untouched seed: 2%, capped at ₹5,000 → ₹1,652
     assert before.decision == "Approve" and "6.2" in before.codes()
 
-    client.patch("/api/settings", json={"tolerance_cap": 1000})
+    client.patch("/api/settings", json={"tolerance_cap": 1000}, headers=FINANCE)
     with SessionLocal() as s:
         after = run_rules(s, overbilled_conference_tables())
     assert after.decision == "Hold"

@@ -14,3 +14,6 @@ export const useRole = () => useContext(RoleContext)
 
 /** Segregation of duties: only Procurement raises POs and manages vendors. The server enforces it too. */
 export const canManagePurchasing = (role: Role) => role === "Procurement"
+
+/** Tolerance is a financial control: only Finance changes it. The server enforces it too. */
+export const canChangeTolerance = (role: Role) => role === "Finance"

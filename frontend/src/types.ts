@@ -377,3 +377,25 @@ export type AppSettings = {
 }
 
 export type SettingsInput = { tolerance_pct?: number; tolerance_cap?: number; vendor_auto_send?: boolean }
+
+/** POST /api/admin/test-suite: one sample on the scratch database, expected vs actual. */
+export type SuiteResult = {
+  file: string
+  story: string | null
+  expected_decision: Decision
+  actual_decision: Decision | null
+  expected_codes: string[]
+  actual_codes: string[]
+  missing_codes: string[]
+  passed: boolean
+  expected_po_id: string | null
+  actual_po_id: string | null
+  expected_due_date: string | null
+  actual_due_date: string | null
+  llm_calls: number
+  duration_ms: number
+  error: string | null
+  stages: { name: string; status: StageStatus; message: string }[]
+}
+
+export type SuiteRun = { passed: number; total: number; duration_ms: number; ran_at: string; results: SuiteResult[] }

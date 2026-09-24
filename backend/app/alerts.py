@@ -257,7 +257,7 @@ def build_and_send(ctx: RunContext, decision: str, audiences: dict[str, list[Fin
         ctx.db.add_all(alerts)
         ctx.db.commit()
         for alert in alerts:
-            if auto_send(alert, ctx.company):
+            if ctx.send_emails and auto_send(alert, ctx.company):
                 deliver(alert)
                 ctx.db.commit()
         return alerts

@@ -9,6 +9,7 @@ import { SectionTitle } from "@/components/ds/SectionTitle"
 import { SplitContainer } from "@/components/ds/SplitContainer"
 import { inr } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { canChangeTolerance, useRole } from "@/role"
 import type { AppSettings, SettingsInput } from "@/types"
 
 const SECTIONS = [
@@ -93,6 +94,8 @@ function allowed(amountPaise: number, pct: number, capPaise: number) {
 
 function Tolerance({ s }: { s: AppSettings }) {
   const qc = useQueryClient()
+  const { role } = useRole()
+  const locked = !canChangeTolerance(role)
   const [pct, setPct] = useState(String(s.tolerance_pct))
   const [cap, setCap] = useState(String(s.tolerance_cap_paise / 100))
   // New settings from the server (a save, or a demo reset): show those values.
@@ -103,7 +106,7 @@ function Tolerance({ s }: { s: AppSettings }) {
     setCap(String(s.tolerance_cap_paise / 100))
   }
   const save = useMutation({
-    mutationFn: (body: SettingsInput) => updateSettings(body),
+    mutationFn: (body: SettingsInput) => updateSettings(body, role),
     onSuccess: (data) => qc.setQueryData(["settings"], data),
   })
   const errors = save.error instanceof ApiError ? save.error.errors : {}
@@ -121,11 +124,12 @@ function Tolerance({ s }: { s: AppSettings }) {
         of the amount, capped at a fixed sum.
       </p>
       <form className="mt-6 grid max-w-2xl gap-5 sm:grid-cols-2" noValidate
-        onSubmit={(e) => { e.preventDefault(); if (ok) save.mutate({ tolerance_pct: pctN, tolerance_cap: capN }) }}>
+        onSubmit={(e) => { e.preventDefault(); if (ok && !locked) save.mutate({ tolerance_pct: pctN, tolerance_cap: capN }) }}>
+        <fieldset disabled={locked} className="contents">
         <Field label="Percentage" htmlFor="tol-pct" error={localPct ?? errors.tolerance_pct}>
           <div className="relative">
             <input id="tol-pct" inputMode="decimal" value={pct} onChange={(e) => setPct(e.target.value)}
-              className={cn(inputCls, "num pr-9 text-right", (localPct || errors.tolerance_pct) && invalidCls)} />
+              className={cn(inputCls, "num pr-9 text-right disabled:cursor-not-allowed disabled:bg-hover", (localPct || errors.tolerance_pct) && invalidCls)} />
             <span aria-hidden className="pointer-events-none absolute top-1/2 right-4 -translate-y-1/2 text-ink-3">%</span>
           </div>
         </Field>
@@ -133,7 +137,7 @@ function Tolerance({ s }: { s: AppSettings }) {
           <div className="relative">
             <span aria-hidden className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-ink-3">₹</span>
             <input id="tol-cap" inputMode="decimal" value={cap} onChange={(e) => setCap(e.target.value)}
-              className={cn(inputCls, "num pl-8 text-right", (localCap || errors.tolerance_cap) && invalidCls)} />
+              className={cn(inputCls, "num pl-8 text-right disabled:cursor-not-allowed disabled:bg-hover", (localCap || errors.tolerance_cap) && invalidCls)} />
           </div>
         </Field>
         {ok && (
@@ -147,6 +151,12 @@ function Tolerance({ s }: { s: AppSettings }) {
           {save.isSuccess && !dirty && <span role="status" className="text-[14px] text-approve">Saved. The next invoice uses it.</span>}
           {save.error && !Object.keys(errors).length && <span role="alert" className="text-[14px] text-reject">{save.error.message}</span>}
         </div>
+        </fieldset>
+        {locked && (
+          <p className="text-[13px] leading-snug text-ink-3 sm:col-span-2">
+            Only Finance can change the tolerance. The role is {role}; switch it at the top to continue.
+          </p>
+        )}
       </form>
     </Section>
   )
@@ -154,8 +164,9 @@ function Tolerance({ s }: { s: AppSettings }) {
 
 function Emails({ s }: { s: AppSettings }) {
   const qc = useQueryClient()
+  const { role } = useRole()
   const save = useMutation({
-    mutationFn: (on: boolean) => updateSettings({ vendor_auto_send: on }),
+    mutationFn: (on: boolean) => updateSettings({ vendor_auto_send: on }, role),
     onSuccess: (data) => qc.setQueryData(["settings"], data),
   })
   const on = save.isPending ? !!save.variables : s.vendor_auto_send

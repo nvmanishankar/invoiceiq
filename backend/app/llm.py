@@ -103,6 +103,8 @@ def extract(file_bytes: bytes, file_hash: str, text: str = "", source: str | Non
     cached = load_cache(file_hash)
     if cached is not None:
         return cached
+    if ctx is not None and ctx.offline:
+        return None
     if not settings.GEMINI_API_KEY:
         log.warning("GEMINI_API_KEY is not set; extraction unavailable")
         return None
@@ -185,6 +187,8 @@ def similarity(pairs: list[tuple[str, str]], ctx=None) -> list[float] | None:
     cached = load_similarity_cache(key, len(pairs))
     if cached is not None:
         return cached
+    if ctx is not None and ctx.offline:
+        return None
     if not settings.GEMINI_API_KEY:
         return None
     for model in models():

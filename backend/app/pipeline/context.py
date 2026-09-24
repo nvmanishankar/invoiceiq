@@ -146,6 +146,8 @@ class RunContext:
     decision: str | None = None
     findings: list[Finding] = field(default_factory=list)
     halt: bool = False  # only for "can't continue" (unreadable, not an invoice)
+    offline: bool = False  # cached answers only: never call the LLM (the test suite)
+    send_emails: bool = True  # False: alerts are stored as Drafted and nothing is sent (the test suite)
     _fields: InvoiceFields | None = field(default=None, repr=False)
 
     @property

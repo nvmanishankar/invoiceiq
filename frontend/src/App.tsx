@@ -10,6 +10,7 @@ import { ProcessPage } from "@/pages/process/ProcessPage"
 import { ReviewPage } from "@/pages/review/ReviewPage"
 import { SettingsPage } from "@/pages/settings/SettingsPage"
 import { Styleguide } from "@/pages/Styleguide"
+import { TestsPage } from "@/pages/tests/TestsPage"
 import { VendorsPage } from "@/pages/vendors/VendorsPage"
 import { RoleProvider } from "@/components/RoleProvider"
 
@@ -23,6 +24,7 @@ const BUILT: Record<string, ReactNode> = {
   "/pos": <PosPage />,
   "/vendors": <VendorsPage />,
   "/outbox": <OutboxPage />,
+  "/tests": <TestsPage />,
   "/settings": <SettingsPage />,
   "/styleguide": <Styleguide />,
 }
