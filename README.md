@@ -1,6 +1,6 @@
 # InvoiceIQ
 
-**Live demo:** _coming soon (Render URL goes here)_
+**Live demo:** https://invoiceiq-kxv1.onrender.com/process
 
 InvoiceIQ is an accounts-payable assistant, built for the Zamp AI Solutions Associate case study (PS-1). You give it a vendor invoice PDF, text or scanned. It extracts the fields with an LLM, then runs Python rules that check the vendor, match the purchase order (explicit or inferred), check amounts and remaining PO balance, catch duplicates, and validate Indian GST and payment terms. It ends with an explainable **Approve / Hold / Reject** decision and routed email alerts, and you can watch each stage live in the browser. The AI reads; the rules decide.
 
