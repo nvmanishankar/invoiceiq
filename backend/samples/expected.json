@@ -1,0 +1,190 @@
+[
+  {
+    "file": "01_happy_deccan.pdf",
+    "story": "Clean text PDF, explicit PO, same state (CGST+SGST). MSME vendor with 60-day PO terms.",
+    "vendor_id": "V-04",
+    "invoice_no": "DOI/2026-27/0158",
+    "invoice_date": "2026-09-20",
+    "po_ref_printed": "PO-2026-109",
+    "total_paise": 26550000,
+    "scanned": false,
+    "decision": "Approve",
+    "codes": [
+      "8.1",
+      "9.5"
+    ],
+    "po_id": "PO-2026-109",
+    "match_type": "Explicit",
+    "due_date": "2026-11-04",
+    "note": "Due date capped at 45 days because Deccan is MSME (PO says 60)."
+  },
+  {
+    "file": "02_happy_brighttech_scan.pdf",
+    "story": "Scanned image PDF, PO written as 'PO 105', other state (IGST).",
+    "vendor_id": "V-02",
+    "invoice_no": "BT/26/0874",
+    "invoice_date": "2026-09-22",
+    "po_ref_printed": "PO 105",
+    "total_paise": 78116000,
+    "scanned": true,
+    "decision": "Approve",
+    "codes": [
+      "1.2",
+      "5.2",
+      "8.2"
+    ],
+    "po_id": "PO-2026-105",
+    "match_type": "Explicit",
+    "due_date": "2026-10-22"
+  },
+  {
+    "file": "03_edge_inferred_po_acme.pdf",
+    "story": "No PO reference anywhere. Three Acme POs survive the filters; line-item scoring picks PO-2026-104 over PO-2026-117 (which matches the amount exactly) and PO-2026-101.",
+    "vendor_id": "V-01",
+    "invoice_no": "ACME/2026/0402",
+    "invoice_date": "2026-09-15",
+    "po_ref_printed": null,
+    "total_paise": 11800000,
+    "scanned": false,
+    "decision": "Approve",
+    "codes": [
+      "5.7"
+    ],
+    "po_id": "PO-2026-104",
+    "match_type": "Inferred",
+    "confidence": "High",
+    "due_date": "2026-10-15",
+    "note": "Scores ~82.6 (PO-104) vs ~48.3 (PO-117) vs ~30.0 (PO-101)."
+  },
+  {
+    "file": "04_edge_split_overbill_acme.pdf",
+    "story": "Third invoice on PO-2026-101. PO total 4,72,000; 3,54,000 already approved; 1,18,000 left. This invoice is 1,41,600 and takes quantity to 2,100 of 2,000. PO reference is in the notes.",
+    "vendor_id": "V-01",
+    "invoice_no": "ACME/2026/0417",
+    "invoice_date": "2026-09-18",
+    "po_ref_printed": "PO-2026-101",
+    "total_paise": 14160000,
+    "scanned": false,
+    "decision": "Hold",
+    "codes": [
+      "6.5",
+      "6.6"
+    ],
+    "po_id": "PO-2026-101",
+    "match_type": "Explicit",
+    "alerts": [
+      "Vendor"
+    ]
+  },
+  {
+    "file": "05_edge_duplicate_sahyadri_scan.pdf",
+    "story": "Re-scanned copy of SPH/INV-0042 (already approved), resubmitted with the number written as '42'.",
+    "vendor_id": "V-05",
+    "invoice_no": "42",
+    "invoice_date": "2026-09-05",
+    "po_ref_printed": "PO-2026-114",
+    "total_paise": 7080000,
+    "scanned": true,
+    "decision": "Reject",
+    "codes": [
+      "7.2"
+    ],
+    "po_id": "PO-2026-114",
+    "duplicate_of": "SEED-0003",
+    "alerts": [
+      "Vendor",
+      "AP"
+    ]
+  },
+  {
+    "file": "06_edge_bank_changed_brighttech.pdf",
+    "story": "Everything matches PO-2026-116 except the bank account (ends 7766; master ends 5667).",
+    "vendor_id": "V-02",
+    "invoice_no": "BT/26/0917",
+    "invoice_date": "2026-09-20",
+    "po_ref_printed": "PO-2026-116",
+    "total_paise": 24780000,
+    "scanned": false,
+    "decision": "Hold",
+    "codes": [
+      "4.7"
+    ],
+    "po_id": "PO-2026-116",
+    "fraud": true,
+    "alerts": [
+      "Finance",
+      "AP"
+    ],
+    "no_vendor_email": true
+  },
+  {
+    "file": "07_extra_quotation_acme.pdf",
+    "story": "A quotation sent to the AP inbox instead of an invoice.",
+    "vendor_id": "V-01",
+    "invoice_no": "QT/ACME/2026/077",
+    "invoice_date": "2026-09-22",
+    "po_ref_printed": null,
+    "total_paise": 7729000,
+    "scanned": false,
+    "decision": "Reject",
+    "codes": [
+      "1.4"
+    ],
+    "alerts": [
+      "Vendor"
+    ]
+  },
+  {
+    "file": "08_extra_wrong_split_brighttech.pdf",
+    "story": "Karnataka vendor billing a Telangana buyer with CGST+SGST instead of IGST. Totals are right.",
+    "vendor_id": "V-02",
+    "invoice_no": "BT/26/0931",
+    "invoice_date": "2026-09-21",
+    "po_ref_printed": "PO-2026-116",
+    "total_paise": 8260000,
+    "scanned": false,
+    "decision": "Hold",
+    "codes": [
+      "8.3"
+    ],
+    "po_id": "PO-2026-116",
+    "alerts": [
+      "Vendor"
+    ]
+  },
+  {
+    "file": "09_extra_missing_date_deccan.pdf",
+    "story": "No invoice date. Use it to demo the vendor response link loop.",
+    "vendor_id": "V-04",
+    "invoice_no": "DOI/2026-27/0171",
+    "invoice_date": null,
+    "po_ref_printed": "PO-2026-110",
+    "total_paise": 8260000,
+    "scanned": false,
+    "decision": "Hold",
+    "codes": [
+      "3.2"
+    ],
+    "po_id": "PO-2026-110",
+    "alerts": [
+      "Vendor"
+    ]
+  },
+  {
+    "file": "10_extra_blocked_quickfix.pdf",
+    "story": "Invoice from a blocked vendor quoting a PO that doesn't exist.",
+    "vendor_id": "V-06",
+    "invoice_no": "QFT/0093",
+    "invoice_date": "2026-09-19",
+    "po_ref_printed": "PO-2026-099",
+    "total_paise": 5900000,
+    "scanned": false,
+    "decision": "Reject",
+    "codes": [
+      "4.5"
+    ],
+    "alerts": [
+      "Procurement"
+    ]
+  }
+]

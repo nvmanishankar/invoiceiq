@@ -1,0 +1,58 @@
+[
+  {
+    "country": "IN",
+    "tax_name": "GST",
+    "rate": 0,
+    "label": "Nil / exempt",
+    "valid_from": "2017-07-01",
+    "valid_to": null
+  },
+  {
+    "country": "IN",
+    "tax_name": "GST",
+    "rate": 5,
+    "label": "Merit",
+    "valid_from": "2017-07-01",
+    "valid_to": null
+  },
+  {
+    "country": "IN",
+    "tax_name": "GST",
+    "rate": 18,
+    "label": "Standard",
+    "valid_from": "2017-07-01",
+    "valid_to": null
+  },
+  {
+    "country": "IN",
+    "tax_name": "GST",
+    "rate": 40,
+    "label": "Demerit",
+    "valid_from": "2025-09-22",
+    "valid_to": null
+  },
+  {
+    "country": "IN",
+    "tax_name": "GST",
+    "rate": 3,
+    "label": "Special: precious metals",
+    "valid_from": "2017-07-01",
+    "valid_to": null
+  },
+  {
+    "country": "IN",
+    "tax_name": "GST",
+    "rate": 12,
+    "label": "Old slab",
+    "valid_from": "2017-07-01",
+    "valid_to": "2025-09-21"
+  },
+  {
+    "country": "IN",
+    "tax_name": "GST",
+    "rate": 28,
+    "label": "Old slab",
+    "valid_from": "2017-07-01",
+    "valid_to": "2025-09-21"
+  }
+]

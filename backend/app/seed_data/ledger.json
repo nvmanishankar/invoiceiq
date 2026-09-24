@@ -1,0 +1,89 @@
+[
+  {
+    "run_id": "SEED-0001",
+    "invoice_no": "ACME/2026/0311",
+    "vendor_id": "V-01",
+    "vendor_tax_id": "36AABCA1234F1ZA",
+    "po_id": "PO-2026-101",
+    "invoice_date": "2026-07-10",
+    "po_match_type": "Explicit",
+    "decision": "Approve",
+    "status": "approved",
+    "is_seed": true,
+    "bank_account": "50100234564521",
+    "subtotal_paise": 16000000,
+    "cgst_paise": 1440000,
+    "sgst_paise": 1440000,
+    "igst_paise": 0,
+    "total_paise": 18880000,
+    "lines": [
+      {
+        "line_no": 1,
+        "description": "A4 copier paper 75gsm (ream of 500 sheets)",
+        "qty": 800,
+        "unit": "ream",
+        "unit_price_paise": 20000,
+        "tax_rate": 18,
+        "matched_po_line": 1
+      }
+    ]
+  },
+  {
+    "run_id": "SEED-0002",
+    "invoice_no": "ACME/2026/0388",
+    "vendor_id": "V-01",
+    "vendor_tax_id": "36AABCA1234F1ZA",
+    "po_id": "PO-2026-101",
+    "invoice_date": "2026-08-12",
+    "po_match_type": "Explicit",
+    "decision": "Approve",
+    "status": "approved",
+    "is_seed": true,
+    "bank_account": "50100234564521",
+    "subtotal_paise": 14000000,
+    "cgst_paise": 1260000,
+    "sgst_paise": 1260000,
+    "igst_paise": 0,
+    "total_paise": 16520000,
+    "lines": [
+      {
+        "line_no": 1,
+        "description": "A4 copier paper 75gsm (ream of 500 sheets)",
+        "qty": 700,
+        "unit": "ream",
+        "unit_price_paise": 20000,
+        "tax_rate": 18,
+        "matched_po_line": 1
+      }
+    ]
+  },
+  {
+    "run_id": "SEED-0003",
+    "invoice_no": "SPH/INV-0042",
+    "vendor_id": "V-05",
+    "vendor_tax_id": "27AAHCS7788L1ZD",
+    "po_id": "PO-2026-114",
+    "invoice_date": "2026-09-05",
+    "po_match_type": "Explicit",
+    "decision": "Approve",
+    "status": "approved",
+    "is_seed": true,
+    "bank_account": "77889900112233",
+    "subtotal_paise": 6000000,
+    "cgst_paise": 0,
+    "sgst_paise": 0,
+    "igst_paise": 1080000,
+    "total_paise": 7080000,
+    "lines": [
+      {
+        "line_no": 1,
+        "description": "Printed brochures A4",
+        "qty": 5000,
+        "unit": "pcs",
+        "unit_price_paise": 1200,
+        "tax_rate": 18,
+        "matched_po_line": 1
+      }
+    ]
+  }
+]

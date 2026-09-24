@@ -1,0 +1,239 @@
+[
+  {
+    "po_id": "PO-2026-101",
+    "vendor_id": "V-01",
+    "po_date": "2026-06-02",
+    "status": "Open",
+    "payment_terms_days": 30,
+    "department": "Administration",
+    "lines": [
+      {
+        "line_no": 1,
+        "description": "A4 copier paper 75gsm (ream of 500 sheets)",
+        "hsn_code": "4802",
+        "qty": 2000,
+        "unit": "ream",
+        "unit_price_paise": 20000,
+        "tax_rate": 18
+      }
+    ],
+    "currency": "INR",
+    "created_by": "seed"
+  },
+  {
+    "po_id": "PO-2026-104",
+    "vendor_id": "V-01",
+    "po_date": "2026-08-20",
+    "status": "Open",
+    "payment_terms_days": 30,
+    "department": "Facilities",
+    "lines": [
+      {
+        "line_no": 1,
+        "description": "Ergonomic office chair, mesh back",
+        "hsn_code": "9401",
+        "qty": 20,
+        "unit": "pcs",
+        "unit_price_paise": 500000,
+        "tax_rate": 18
+      },
+      {
+        "line_no": 2,
+        "description": "Chair floor mat",
+        "hsn_code": "3918",
+        "qty": 20,
+        "unit": "pcs",
+        "unit_price_paise": 130000,
+        "tax_rate": 18
+      }
+    ],
+    "currency": "INR",
+    "created_by": "seed"
+  },
+  {
+    "po_id": "PO-2026-117",
+    "vendor_id": "V-01",
+    "po_date": "2026-09-10",
+    "status": "Open",
+    "payment_terms_days": 30,
+    "department": "Facilities",
+    "lines": [
+      {
+        "line_no": 1,
+        "description": "Standard office chair",
+        "hsn_code": "9401",
+        "qty": 25,
+        "unit": "pcs",
+        "unit_price_paise": 400000,
+        "tax_rate": 18
+      }
+    ],
+    "currency": "INR",
+    "created_by": "seed"
+  },
+  {
+    "po_id": "PO-2026-105",
+    "vendor_id": "V-02",
+    "po_date": "2026-08-28",
+    "status": "Open",
+    "payment_terms_days": 30,
+    "department": "IT",
+    "lines": [
+      {
+        "line_no": 1,
+        "description": "Dell Latitude 5440 laptop, i5, 16GB RAM",
+        "hsn_code": "8471",
+        "qty": 10,
+        "unit": "pcs",
+        "unit_price_paise": 6500000,
+        "tax_rate": 18
+      },
+      {
+        "line_no": 2,
+        "description": "Laptop backpack 15.6 inch",
+        "hsn_code": "4202",
+        "qty": 10,
+        "unit": "pcs",
+        "unit_price_paise": 120000,
+        "tax_rate": 18
+      }
+    ],
+    "currency": "INR",
+    "created_by": "seed"
+  },
+  {
+    "po_id": "PO-2026-116",
+    "vendor_id": "V-02",
+    "po_date": "2026-09-15",
+    "status": "Open",
+    "payment_terms_days": 30,
+    "department": "IT",
+    "lines": [
+      {
+        "line_no": 1,
+        "description": "27 inch IPS monitor",
+        "hsn_code": "8528",
+        "qty": 15,
+        "unit": "pcs",
+        "unit_price_paise": 1400000,
+        "tax_rate": 18
+      }
+    ],
+    "currency": "INR",
+    "created_by": "seed"
+  },
+  {
+    "po_id": "PO-2026-108",
+    "vendor_id": "V-03",
+    "po_date": "2026-09-05",
+    "status": "Open",
+    "payment_terms_days": 30,
+    "department": "Operations",
+    "lines": [
+      {
+        "line_no": 1,
+        "description": "Freight Hyderabad to Delhi, full truck load",
+        "hsn_code": "9965",
+        "qty": 12,
+        "unit": "trip",
+        "unit_price_paise": 2500000,
+        "tax_rate": 18
+      }
+    ],
+    "currency": "INR",
+    "created_by": "seed"
+  },
+  {
+    "po_id": "PO-2026-109",
+    "vendor_id": "V-04",
+    "po_date": "2026-09-01",
+    "status": "Open",
+    "payment_terms_days": 60,
+    "department": "Facilities",
+    "lines": [
+      {
+        "line_no": 1,
+        "description": "Workstation desk 1400mm",
+        "hsn_code": "9403",
+        "qty": 10,
+        "unit": "pcs",
+        "unit_price_paise": 1800000,
+        "tax_rate": 18
+      },
+      {
+        "line_no": 2,
+        "description": "Pedestal drawer unit",
+        "hsn_code": "9403",
+        "qty": 10,
+        "unit": "pcs",
+        "unit_price_paise": 450000,
+        "tax_rate": 18
+      }
+    ],
+    "currency": "INR",
+    "created_by": "seed"
+  },
+  {
+    "po_id": "PO-2026-110",
+    "vendor_id": "V-04",
+    "po_date": "2026-09-05",
+    "status": "Open",
+    "payment_terms_days": 30,
+    "department": "Facilities",
+    "lines": [
+      {
+        "line_no": 1,
+        "description": "Conference table, 8-seater",
+        "hsn_code": "9403",
+        "qty": 2,
+        "unit": "pcs",
+        "unit_price_paise": 3500000,
+        "tax_rate": 18
+      }
+    ],
+    "currency": "INR",
+    "created_by": "seed"
+  },
+  {
+    "po_id": "PO-2026-112",
+    "vendor_id": "V-05",
+    "po_date": "2026-07-10",
+    "status": "Closed",
+    "payment_terms_days": 30,
+    "department": "Marketing",
+    "lines": [
+      {
+        "line_no": 1,
+        "description": "Tri-fold brochures",
+        "hsn_code": "4911",
+        "qty": 10000,
+        "unit": "pcs",
+        "unit_price_paise": 800,
+        "tax_rate": 18
+      }
+    ],
+    "currency": "INR",
+    "created_by": "seed"
+  },
+  {
+    "po_id": "PO-2026-114",
+    "vendor_id": "V-05",
+    "po_date": "2026-08-25",
+    "status": "Open",
+    "payment_terms_days": 30,
+    "department": "Marketing",
+    "lines": [
+      {
+        "line_no": 1,
+        "description": "Printed brochures A4",
+        "hsn_code": "4911",
+        "qty": 5000,
+        "unit": "pcs",
+        "unit_price_paise": 1200,
+        "tax_rate": 18
+      }
+    ],
+    "currency": "INR",
+    "created_by": "seed"
+  }
+]

@@ -1,0 +1,14 @@
+{
+  "name": "Nimbus Retail Pvt Ltd",
+  "address": "Plot 42, HITEC City, Madhapur, Hyderabad, Telangana 500081",
+  "country": "IN",
+  "gstin": "36AAECN4321R1Z3",
+  "state_code": "36",
+  "currency": "INR",
+  "tolerance_pct": 0.02,
+  "tolerance_abs_paise": 500000,
+  "ap_email": "nvmanishankar@gmail.com",
+  "procurement_email": "nvmanishankar@gmail.com",
+  "finance_email": "nvmanishankar@gmail.com",
+  "vendor_auto_send": true
+}

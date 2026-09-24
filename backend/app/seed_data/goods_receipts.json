@@ -1,0 +1,62 @@
+[
+  {
+    "po_id": "PO-2026-101",
+    "line_no": 1,
+    "qty_received": 2000,
+    "received_date": "2026-08-10"
+  },
+  {
+    "po_id": "PO-2026-104",
+    "line_no": 1,
+    "qty_received": 20,
+    "received_date": "2026-09-12"
+  },
+  {
+    "po_id": "PO-2026-104",
+    "line_no": 2,
+    "qty_received": 20,
+    "received_date": "2026-09-12"
+  },
+  {
+    "po_id": "PO-2026-105",
+    "line_no": 1,
+    "qty_received": 10,
+    "received_date": "2026-09-18"
+  },
+  {
+    "po_id": "PO-2026-105",
+    "line_no": 2,
+    "qty_received": 10,
+    "received_date": "2026-09-18"
+  },
+  {
+    "po_id": "PO-2026-109",
+    "line_no": 1,
+    "qty_received": 10,
+    "received_date": "2026-09-17"
+  },
+  {
+    "po_id": "PO-2026-109",
+    "line_no": 2,
+    "qty_received": 10,
+    "received_date": "2026-09-17"
+  },
+  {
+    "po_id": "PO-2026-110",
+    "line_no": 1,
+    "qty_received": 2,
+    "received_date": "2026-09-19"
+  },
+  {
+    "po_id": "PO-2026-114",
+    "line_no": 1,
+    "qty_received": 5000,
+    "received_date": "2026-09-03"
+  },
+  {
+    "po_id": "PO-2026-116",
+    "line_no": 1,
+    "qty_received": 15,
+    "received_date": "2026-09-19"
+  }
+]
