@@ -7,8 +7,6 @@ A failed send marks the alert Failed and never fails the run.
 
 import logging
 import re
-import secrets
-from datetime import timedelta
 
 import resend
 from sqlalchemy import select
@@ -23,7 +21,6 @@ from app.utils.timefmt import iso
 log = logging.getLogger(__name__)
 
 AUDIENCE_ORDER = ["Finance", "AP", "Procurement", "Vendor"]
-TOKEN_DAYS = 7
 SEND_BACK_REASONS = ("Unreadable scan", "Missing information", "Other")
 
 
@@ -116,13 +113,9 @@ def run_url(run_id: str) -> str:
     return f"{settings.BASE_URL.rstrip('/')}/process?run={run_id}"
 
 
-def respond_url(token: str) -> str:
-    return f"{settings.BASE_URL.rstrip('/')}/respond/{token}"
-
-
 # --- Templates (no LLM) ---------------------------------------------------------------------------------------------
 
-def vendor_body(f: Facts, decision: str, findings: list[Finding], token: str, reason: str | None = None,
+def vendor_body(f: Facts, decision: str, findings: list[Finding], reason: str | None = None,
                 note: str | None = None) -> str:
     against = f" against {f.po_id}" if f.po_id else ""
     amount = f" for {f.total}" if f.total else ""
@@ -141,8 +134,8 @@ def vendor_body(f: Facts, decision: str, findings: list[Finding], token: str, re
         parts.append("Please don't resend this document. If you believe this is a mistake, reply to your usual "
                      "contact in our AP team.")
     else:
-        parts.append(f"Please send a corrected invoice using this secure link (valid {TOKEN_DAYS} days):\n"
-                     f"{respond_url(token)}")
+        # No response link until the vendor response page exists; the vendor replies by email.
+        parts.append("Please reply with a corrected invoice.")
     parts.append(f"Thank you,\nAccounts Payable, {f.company.name if f.company else 'our company'}")
     return "\n\n".join(parts)
 
@@ -202,10 +195,6 @@ def _new_alert(run_id: str, audience: str, facts: Facts, subj: str, body: str) -
     )
 
 
-def _vendor_token() -> tuple[str, object]:
-    return secrets.token_urlsafe(24), utcnow() + timedelta(days=TOKEN_DAYS)
-
-
 def build_alerts(ctx: RunContext, decision: str, audiences: dict[str, list[Finding]], headline: str) -> list[Alert]:
     """One Alert per audience. `audiences` comes from decide.alert_audiences, which already drops the vendor on fraud."""
     fraud = any(f.fraud for f in ctx.findings)
@@ -216,10 +205,8 @@ def build_alerts(ctx: RunContext, decision: str, audiences: dict[str, list[Findi
         if audience == "Vendor":
             if fraud:  # belt and braces: never a vendor email on a fraud run
                 continue
-            token, expires = _vendor_token()
             alert = _new_alert(ctx.run_id, audience, facts, subject(audience, facts, decision, fraud),
-                               vendor_body(facts, decision, findings, token))
-            alert.response_token, alert.token_expires = token, expires
+                               vendor_body(facts, decision, findings))
         elif audience == "Finance" and fraud:
             alert = _new_alert(ctx.run_id, audience, facts, subject(audience, facts, decision, fraud),
                                finance_fraud_body(facts, findings))
@@ -255,9 +242,12 @@ def deliver(alert: Alert) -> None:
     log.info("Sent %s alert for %s (Resend id %s)", alert.audience, alert.run_id, email_id)
 
 
-def auto_send(alert: Alert) -> bool:
-    """Internal alerts always send; vendor ones only when VENDOR_AUTO_SEND is on (else AP clicks Send)."""
-    return alert.audience != "Vendor" or settings.VENDOR_AUTO_SEND
+def auto_send(alert: Alert, company: CompanySettings | None) -> bool:
+    """Internal alerts always send. Vendor ones only when auto-send is on in Settings and not switched off for the
+    deployment (VENDOR_AUTO_SEND); otherwise they wait in the Outbox for AP to press Send."""
+    if alert.audience != "Vendor":
+        return True
+    return settings.VENDOR_AUTO_SEND and (company.vendor_auto_send if company is not None else True)
 
 
 def build_and_send(ctx: RunContext, decision: str, audiences: dict[str, list[Finding]], headline: str) -> list[Alert]:
@@ -267,7 +257,7 @@ def build_and_send(ctx: RunContext, decision: str, audiences: dict[str, list[Fin
         ctx.db.add_all(alerts)
         ctx.db.commit()
         for alert in alerts:
-            if auto_send(alert):
+            if auto_send(alert, ctx.company):
                 deliver(alert)
                 ctx.db.commit()
         return alerts
@@ -309,10 +299,8 @@ def send_back_to_vendor(db: Session, row: Invoice, vendor_findings: list[Finding
                                  "Finance verifies it by phone instead.")
     company = db.scalar(select(CompanySettings).limit(1))
     facts = Facts(row, company, row.vendor, row.po_id)
-    token, expires = _vendor_token()
     alert = _new_alert(row.run_id, "Vendor", facts, subject("Vendor", facts, "Hold", False),
-                       vendor_body(facts, "Hold", vendor_findings, token, reason, note))
-    alert.response_token, alert.token_expires = token, expires
+                       vendor_body(facts, "Hold", vendor_findings, reason, note))
     db.add(alert)
     db.commit()
     deliver(alert)

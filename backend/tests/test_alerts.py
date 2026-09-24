@@ -34,7 +34,8 @@ def test_one_alert_per_audience_listing_every_finding(db, emails):
     assert vendor.body.startswith("Intended for: Acme Supplies Private Limited (accounts)")
     assert vendor.to_email == settings.OWNER_EMAIL
     assert vendor.status == "Sent" and vendor.sent_at is not None
-    assert vendor.response_token and f"/respond/{vendor.response_token}" in vendor.body
+    assert "Please reply with a corrected invoice." in vendor.body
+    assert "/respond/" not in vendor.body and vendor.response_token is None  # no link until a respond page exists
     assert [e["subject"] for e in emails] == [vendor.subject]
 
 

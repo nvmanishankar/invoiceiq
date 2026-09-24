@@ -3,11 +3,11 @@ import { useMutation } from "@tanstack/react-query"
 
 import { reviewRun } from "@/api"
 import { AccordionItem } from "@/components/ds/Accordion"
+import { inputCls } from "@/components/ds/Field"
 import { PillButton } from "@/components/ds/PillButton"
 import { cn } from "@/lib/utils"
 import { useRole } from "@/role"
 import type { ReviewAction, RunDetail } from "@/types"
-import { inputCls } from "./FieldsForm"
 
 const SEND_BACK_REASONS = ["Unreadable scan", "Missing information", "Other"] as const
 const PO_CODES = new Set(["5.3", "5.8", "5.9", "5.10"])

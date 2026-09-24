@@ -227,3 +227,153 @@ export type Stats = {
 }
 
 export type RunFilters = { status?: string; vendor?: string; q?: string }
+
+// --- Purchase orders, vendors, settings (phase 12) ---------------------------------------------------------------
+
+export type TaxType = "CGST+SGST" | "IGST" | "Import"
+export type PoStatus = "Open" | "Closed" | "Cancelled"
+
+export type PoRegisterLine = {
+  line_no: number
+  description: string
+  hsn_code: string | null
+  qty: number
+  unit: string | null
+  unit_price_paise: number
+  unit_price_display: string
+  tax_rate: number
+  amount_paise: number
+  amount_display: string
+  invoiced_qty: number
+}
+
+export type BilledInvoice = {
+  run_id: string
+  invoice_no: string | null
+  invoice_date: string | null
+  decision: Decision | null
+  status: string
+  is_seed: boolean
+  counts_against_po: boolean
+  total_paise: number | null
+  total_display: string | null
+}
+
+export type PoRow = {
+  po_id: string
+  vendor_id: string
+  vendor_name: string
+  vendor_gstin: string | null
+  vendor_state: string | null
+  vendor_msme: boolean
+  vendor_status: string
+  po_date: string
+  currency: string
+  payment_terms_days: number
+  department: string | null
+  status: PoStatus
+  created_by: string | null
+  created_at: string | null
+  tax_type: TaxType
+  subtotal_paise: number
+  subtotal_display: string
+  cgst_paise: number
+  sgst_paise: number
+  igst_paise: number
+  tax_paise: number
+  tax_display: string
+  total_paise: number
+  total_display: string
+  invoiced_paise: number
+  invoiced_display: string
+  remaining_paise: number
+  remaining_display: string
+  lines: PoRegisterLine[]
+  invoices: BilledInvoice[]
+  warnings?: string[]
+}
+
+export type PoLineInput = {
+  description: string
+  hsn_code: string | null
+  qty: number | null
+  unit: string
+  unit_price: number | null
+  tax_rate: number | null
+}
+
+export type PoInput = {
+  vendor_id: string
+  po_date: string
+  payment_terms_days: number | null
+  department: string | null
+  lines: PoLineInput[]
+}
+
+export type TaxRate = {
+  id: number
+  country: string
+  tax_name: string
+  rate: number
+  label: string | null
+  valid_from: string
+  valid_to: string | null
+}
+
+export type VendorRow = {
+  vendor_id: string
+  name: string
+  short_name: string | null
+  gstin: string | null
+  state_code: string | null
+  state: string | null
+  country: string
+  currency: string
+  msme: boolean
+  status: "Active" | "Blocked"
+  bank_last4: string | null
+  bank_masked: string | null
+  ifsc: string | null
+  bank_name: string | null
+  contact_email: string | null
+  phone: string | null
+  open_pos: number
+  created_by: string | null
+  created_at: string | null
+}
+
+export type VendorInput = {
+  name: string
+  short_name: string
+  gstin: string
+  address: string
+  phone: string
+  bank_account: string
+  ifsc: string
+  bank_name: string
+  contact_email: string
+  msme: boolean | null
+}
+
+export type AppSettings = {
+  company: {
+    name: string
+    address: string | null
+    country: string
+    gstin: string | null
+    state_code: string | null
+    state: string | null
+    currency: string
+    ap_email: string
+    procurement_email: string
+    finance_email: string
+  }
+  tolerance_pct: number
+  tolerance_cap_paise: number
+  tolerance_cap_display: string
+  vendor_auto_send: boolean
+  emails_enabled: boolean
+  vendor_auto_send_allowed: boolean
+}
+
+export type SettingsInput = { tolerance_pct?: number; tolerance_cap?: number; vendor_auto_send?: boolean }

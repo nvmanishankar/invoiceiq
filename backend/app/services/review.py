@@ -17,13 +17,13 @@ from app.models import Invoice, PurchaseOrder, Review, RunStage, clip, utcnow
 from app.pipeline.context import code_label
 from app.pipeline.runner import DECISION_ORDER, HALTING_STAGES, stored_finding
 from app.pipeline.s2_extract import write_invoice_row
+from app.roles import DEFAULT_ROLE
+from app.roles import FINANCE as FINANCE_ROLE
 from app.schemas import ExtractedInvoice
 from app.utils.money import format_inr
 
 ACTIONS = ("confirm", "pick_po", "override", "send_to_vendor", "reject")
 REVIEWABLE = ("needs_review", "waiting_on_vendor")
-DEFAULT_ROLE = "AP clerk"
-FINANCE_ROLE = "Finance"
 RESUME_AFTER_CONFIRM = HALTING_STAGES  # stages 1-2 are kept; 3 onwards runs again
 RESUME_AFTER_PICK_PO = 5  # stages 1-5 are kept; 6 onwards runs again
 PICKED_MATCH_TYPE = "Explicit (reviewer)"

@@ -11,3 +11,6 @@ export const RoleContext = createContext<{ role: Role; setRole: (r: Role) => voi
 
 /** The top-bar role. Sent as X-Role on review requests; the server decides what each role may do. */
 export const useRole = () => useContext(RoleContext)
+
+/** Segregation of duties: only Procurement raises POs and manages vendors. The server enforces it too. */
+export const canManagePurchasing = (role: Role) => role === "Procurement"

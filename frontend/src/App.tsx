@@ -5,9 +5,12 @@ import { AppShell } from "@/components/AppShell"
 import { MENU_ITEMS, NAV_ITEMS } from "@/nav"
 import { Placeholder } from "@/pages/Placeholder"
 import { OutboxPage } from "@/pages/outbox/OutboxPage"
+import { PosPage } from "@/pages/pos/PosPage"
 import { ProcessPage } from "@/pages/process/ProcessPage"
 import { ReviewPage } from "@/pages/review/ReviewPage"
+import { SettingsPage } from "@/pages/settings/SettingsPage"
 import { Styleguide } from "@/pages/Styleguide"
+import { VendorsPage } from "@/pages/vendors/VendorsPage"
 import { RoleProvider } from "@/components/RoleProvider"
 
 // Recharts is heavy; only the dashboard needs it.
@@ -17,7 +20,10 @@ const BUILT: Record<string, ReactNode> = {
   "/process": <ProcessPage />,
   "/review": <ReviewPage />,
   "/dashboard": <Suspense fallback={null}><DashboardPage /></Suspense>,
+  "/pos": <PosPage />,
+  "/vendors": <VendorsPage />,
   "/outbox": <OutboxPage />,
+  "/settings": <SettingsPage />,
   "/styleguide": <Styleguide />,
 }
 

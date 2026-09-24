@@ -1,10 +1,9 @@
+import { inputCls } from "@/components/ds/Field"
 import { inr } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { Extraction } from "@/types"
 import { FIELDS, rupeesToPaise, type FieldDef, type Values } from "./fields"
 
-export const inputCls =
-  "h-11 w-full rounded-input border border-line bg-raised px-4 text-[15px] text-ink placeholder:text-ink-3 transition-colors hover:border-ink-3 focus-visible:border-accent"
 
 /** Extracted fields, editable. Low-confidence and missing required fields are outlined amber. */
 export function FieldsForm({
