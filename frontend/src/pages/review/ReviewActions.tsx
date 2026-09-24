@@ -27,6 +27,12 @@ function suggested(run: RunDetail): Key | null {
   return null
 }
 
+/** When the run's own (automatic) email to the vendor went out, if it did. */
+function alreadySent(run: RunDetail): string | null {
+  const sent = run.alerts.filter((a) => a.audience === "Vendor" && a.status === "Sent" && a.sent_at)
+  return sent.length ? sent[sent.length - 1].sent_at : null
+}
+
 type Dict = Record<string, unknown>
 
 /** PO candidates from stage 5's score table, best first. */
@@ -103,7 +109,8 @@ export function ReviewActions({
         {fraud ? (
           <Blocked>There's a fraud finding, so nothing goes to the vendor. Finance verifies it by phone instead.</Blocked>
         ) : (
-          <SendToVendor runId={run.run_id} busy={busy} onSend={(email) => act.mutate({ action: "send_to_vendor", ...email })} />
+          <SendToVendor runId={run.run_id} busy={busy} alreadySent={alreadySent(run)}
+            onSend={(email) => act.mutate({ action: "send_to_vendor", ...email })} />
         )}
       </Action>
 

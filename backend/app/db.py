@@ -2,7 +2,7 @@
 
 from collections.abc import Iterator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -36,7 +36,24 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 def init_db(bind: Engine | None = None) -> None:
     from app import models  # noqa: F401  (registers tables on Base.metadata)
 
-    Base.metadata.create_all(bind or engine)
+    bind = bind or engine
+    Base.metadata.create_all(bind)
+    _add_missing_columns(bind)
+
+
+def _add_missing_columns(bind: Engine) -> None:
+    """create_all makes new tables but never new columns. A nullable column added to a model since the database was
+    created is added here, so an existing database (Neon) keeps working without a migration tool."""
+    have = inspect(bind)
+    with bind.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if not have.has_table(table.name):
+                continue
+            existing = {c["name"] for c in have.get_columns(table.name)}
+            for col in table.columns:
+                if col.name not in existing and col.nullable and col.server_default is None:
+                    kind = col.type.compile(dialect=bind.dialect)
+                    conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN "{col.name}" {kind}'))
 
 
 def get_db() -> Iterator[Session]:

@@ -2,11 +2,14 @@
 
 Every email goes to OWNER_EMAIL; who it was meant for is stored on the alert and printed at the top.
 Vendor emails are never built or sent when the run has a fraud finding.
+A vendor email for a Hold carries a single-use response link (a token on the alert); a newer email replaces it.
 A failed send marks the alert Failed and never fails the run.
 """
 
 import logging
 import re
+import secrets
+from datetime import datetime, timedelta
 
 import resend
 from sqlalchemy import select
@@ -16,11 +19,13 @@ from app.config import settings
 from app.models import Alert, CompanySettings, Invoice, RunStage, Vendor, clip, utcnow
 from app.pipeline.context import Finding, RunContext
 from app.utils.money import format_inr
-from app.utils.timefmt import iso
+from app.utils.timefmt import as_utc, iso
 
 log = logging.getLogger(__name__)
 
 AUDIENCE_ORDER = ["Finance", "AP", "Procurement", "Vendor"]
+TOKEN_DAYS = 7
+REMINDER = "Reminder: "
 
 
 class VendorEmailBlocked(Exception):
@@ -112,10 +117,62 @@ def run_url(run_id: str) -> str:
     return f"{settings.BASE_URL.rstrip('/')}/process?run={run_id}"
 
 
+def respond_url(token: str) -> str:
+    return f"{settings.BASE_URL.rstrip('/')}/respond/{token}"
+
+
+# --- The vendor's response link ---------------------------------------------------------------------------------------
+
+LINK_PENDING = "<link-created-when-sent>"  # stands in for the token in a preview; replaced when the email goes out
+_LINK_LINE = re.compile(r"Upload your corrected invoice here \(link valid until [^)]*\): \S+")
+
+
+def response_paragraph(url: str, expires: datetime) -> str:
+    return (f"Upload your corrected invoice here (link valid until {expires:%d %b %Y}): {url}. "
+            "You can also reply to this email with the PDF attached.")
+
+
+def pending_link() -> tuple[str, datetime]:
+    """What a preview shows: the real expiry date, and a placeholder where the token will go."""
+    return respond_url(LINK_PENDING), utcnow() + timedelta(days=TOKEN_DAYS)
+
+
+def with_response_link(body: str, url: str, expires: datetime) -> str:
+    """Put the live link in the body: over the placeholder (or an older link), or before the sign-off if a reviewer
+    deleted it."""
+    line = response_paragraph(url, expires)
+    first = line.split(" You can also")[0]
+    if _LINK_LINE.search(body):
+        return _LINK_LINE.sub(lambda _: first, body, count=1)
+    if "\n\nThank you," in body:
+        head, tail = body.rsplit("\n\nThank you,", 1)
+        return f"{head}\n\n{line}\n\nThank you,{tail}"
+    return f"{body.rstrip()}\n\n{line}"
+
+
+def with_ref(subject_line: str, run_id: str) -> str:
+    """Vendor subjects end with 'Ref RUN-…' so a reply by email can be matched to its run."""
+    return subject_line if run_id in subject_line else f"{subject_line} · Ref {run_id}"
+
+
+def issue_token(db: Session, alert: Alert) -> None:
+    """A fresh response link on a vendor Hold email, valid for TOKEN_DAYS. Older links on the run stop working:
+    one active link per run."""
+    now = utcnow()
+    for old in db.scalars(select(Alert).where(Alert.run_id == alert.run_id, Alert.response_token.is_not(None))):
+        if old is not alert and old.token_expires is not None and as_utc(old.token_expires) > now:
+            old.token_expires = now
+    alert.response_token = secrets.token_urlsafe(32)
+    alert.token_expires = now + timedelta(days=TOKEN_DAYS)
+    alert.token_used_at = None
+    alert.body = with_response_link(alert.body, respond_url(alert.response_token), alert.token_expires)
+
+
 # --- Templates (no LLM) ---------------------------------------------------------------------------------------------
 
 def vendor_body(f: Facts, decision: str, findings: list[Finding], reason: str | None = None,
-                note: str | None = None) -> str:
+                note: str | None = None, link: tuple[str, datetime] | None = None) -> str:
+    """`link` is (url, expiry) for a Hold; without one the vendor is asked to reply by email."""
     against = f" against {f.po_id}" if f.po_id else ""
     amount = f" for {f.total}" if f.total else ""
     closing = "We can't accept it because:" if decision == "Reject" else "We can't process it yet because:"
@@ -132,8 +189,9 @@ def vendor_body(f: Facts, decision: str, findings: list[Finding], reason: str | 
     if decision == "Reject":
         parts.append("Please don't resend this document. If you believe this is a mistake, reply to your usual "
                      "contact in our AP team.")
+    elif link is not None:
+        parts.append(response_paragraph(*link))
     else:
-        # No response link until the vendor response page exists; the vendor replies by email.
         parts.append("Please reply with a corrected invoice.")
     parts.append(f"Thank you,\nAccounts Payable, {f.company.name if f.company else 'our company'}")
     return "\n\n".join(parts)
@@ -173,7 +231,7 @@ def subject(audience: str, f: Facts, decision: str, fraud: bool) -> str:
     no = f.invoice_no or "without a number"
     if audience == "Vendor":
         what = "can't be accepted" if decision == "Reject" else "needs a correction"
-        return f"{prefix} Invoice {no} {what}"
+        return with_ref(f"{prefix} Invoice {no} {what}", f.run_id)
     if audience == "Finance" and fraud:
         return f"{prefix} Verify {f.vendor_short} before paying invoice {no}"
     word = {"Approve": "Approved", "Hold": "On hold", "Reject": "Rejected"}.get(decision, decision)
@@ -204,8 +262,11 @@ def build_alerts(ctx: RunContext, decision: str, audiences: dict[str, list[Findi
         if audience == "Vendor":
             if fraud:  # belt and braces: never a vendor email on a fraud run
                 continue
+            link = pending_link() if decision == "Hold" else None  # never a response link on a Reject
             alert = _new_alert(ctx.run_id, audience, facts, subject(audience, facts, decision, fraud),
-                               vendor_body(facts, decision, findings))
+                               vendor_body(facts, decision, findings, link=link))
+            if link is not None:
+                issue_token(ctx.db, alert)
         elif audience == "Finance" and fraud:
             alert = _new_alert(ctx.run_id, audience, facts, subject(audience, facts, decision, fraud),
                                finance_fraud_body(facts, findings))
@@ -221,8 +282,9 @@ def _send_email(subject_line: str, body: str) -> str | None:
     if not settings.RESEND_API_KEY:
         raise RuntimeError("RESEND_API_KEY isn't set")
     resend.api_key = settings.RESEND_API_KEY
+    # Replies (a vendor answering with the PDF attached) come back to the owner's inbox too.
     resp = resend.Emails.send({"from": settings.EMAIL_FROM, "to": [settings.OWNER_EMAIL],
-                               "subject": subject_line, "text": body})
+                               "reply_to": settings.OWNER_EMAIL, "subject": subject_line, "text": body})
     return resp.get("id") if isinstance(resp, dict) else getattr(resp, "id", None)
 
 
@@ -277,14 +339,18 @@ def send_drafted(db: Session, alert: Alert) -> Alert:
     """Outbox 'Send': a Drafted alert (or a Failed one, as a retry)."""
     if alert.audience == "Vendor" and run_has_fraud(db, alert.run_id):
         raise VendorEmailBlocked("This invoice has a fraud finding, so nothing can be sent to the vendor.")
+    if alert.response_token is not None:  # it may have waited in the Outbox: the link runs 7 days from sending
+        issue_token(db, alert)
     deliver(alert)
     db.commit()
     return alert
 
 
 def discard_drafts(db: Session, run_id: str) -> int:
-    """A reviewer acted, so unsent drafts from the earlier decision are out of date."""
-    drafts = db.scalars(select(Alert).where(Alert.run_id == run_id, Alert.status == "Drafted")).all()
+    """A reviewer acted, so unsent drafts from the earlier decision are out of date. A draft whose response link the
+    vendor already used stays: it's the record that link reached them."""
+    drafts = db.scalars(select(Alert).where(Alert.run_id == run_id, Alert.status == "Drafted",
+                                            Alert.token_used_at.is_(None))).all()
     for a in drafts:
         db.delete(a)
     return len(drafts)
@@ -297,12 +363,63 @@ def send_back_to_vendor(db: Session, row: Invoice, subject_line: str, body: str,
                                  "Finance verifies it by phone instead.")
     company = db.scalar(select(CompanySettings).limit(1))
     facts = Facts(row, company, row.vendor, row.po_id)
-    alert = _new_alert(row.run_id, "Vendor", facts, subject_line, body)
+    alert = _new_alert(row.run_id, "Vendor", facts, clip(Alert, "subject", with_ref(subject_line, row.run_id)), body)
+    if row.decision != "Reject":
+        issue_token(db, alert)
     db.add(alert)
     db.commit()
     deliver(alert)
     db.commit()
     log.info("%s sent %s back to the vendor", reviewer, row.run_id)
+    return alert
+
+
+def last_vendor_email(db: Session, run_id: str) -> Alert | None:
+    return db.scalar(select(Alert).where(Alert.run_id == run_id, Alert.audience == "Vendor")
+                     .order_by(Alert.alert_id.desc()).limit(1))
+
+
+def send_reminder(db: Session, row: Invoice, reviewer: str) -> Alert:
+    """The last vendor email again, with 'Reminder:' in front and a fresh link (the old one stops working)."""
+    if run_has_fraud(db, row.run_id):
+        raise VendorEmailBlocked("This invoice has a fraud finding, so nothing can be sent to the vendor. "
+                                 "Finance verifies it by phone instead.")
+    last = last_vendor_email(db, row.run_id)
+    if last is None:
+        raise LookupError("Nothing has been sent to the vendor yet, so there's nothing to remind them of.")
+    subject_line = last.subject if last.subject.startswith(REMINDER) else f"{REMINDER}{last.subject}"
+    alert = Alert(run_id=row.run_id, audience="Vendor", intended_for=last.intended_for, to_email=settings.OWNER_EMAIL,
+                  subject=clip(Alert, "subject", with_ref(subject_line, row.run_id)), body=last.body, status="Drafted")
+    issue_token(db, alert)
+    db.add(alert)
+    db.commit()
+    deliver(alert)
+    db.commit()
+    log.info("%s reminded the vendor about %s", reviewer, row.run_id)
+    return alert
+
+
+def vendor_responded(db: Session, original: Invoice, new_run_id: str, message: str | None) -> Alert:
+    """Tell AP a corrected invoice came in through the response link. Stored, then sent now."""
+    company = db.scalar(select(CompanySettings).limit(1))
+    facts = Facts(original, company, original.vendor, original.po_id)
+    parts = [
+        f"Intended for: {intended_for('AP', company, facts.vendor_full)}",
+        f"{facts.vendor_short} sent a corrected invoice for {facts.invoice_no or 'an invoice without a number'}"
+        f"{' (' + ', '.join(b for b in (facts.total, facts.po_id) if b) + ')' if facts.total or facts.po_id else ''}"
+        " through the response link.",
+    ]
+    if message:
+        parts.append("Their message:\n" + "\n".join(f"  {line}" for line in message.splitlines() if line.strip()))
+    parts.append(f"It replaces {original.run_id} and is being checked now. Follow it in InvoiceIQ:\n{run_url(new_run_id)}")
+    alert = _new_alert(original.run_id, "AP", facts,
+                       f"{subject_prefix('AP', facts.vendor_short, False)} Vendor sent a corrected invoice for "
+                       f"{facts.invoice_no or 'an invoice without a number'} from {facts.vendor_short}",
+                       "\n\n".join(parts))
+    db.add(alert)
+    db.commit()
+    deliver(alert)
+    db.commit()
     return alert
 
 

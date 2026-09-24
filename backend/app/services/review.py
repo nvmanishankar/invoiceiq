@@ -3,6 +3,7 @@
 Every action is logged in `reviews` with before/after values. Confirm and pick_po rewind the run
 and hand back the stage to resume from; the caller runs the rest in the background, and the
 existing SSE stream shows it live. Override, send_to_vendor and reject close or park the run here; a corrected upload supersedes it.
+send_reminder re-sends the last vendor email with a fresh response link.
 """
 
 from dataclasses import dataclass
@@ -23,7 +24,7 @@ from app.schemas import ExtractedInvoice
 from app.services import vendor_email
 from app.utils.money import format_inr
 
-ACTIONS = ("confirm", "pick_po", "override", "send_to_vendor", "reject")
+ACTIONS = ("confirm", "pick_po", "override", "send_to_vendor", "reject", "send_reminder")
 REVIEWABLE = ("needs_review", "waiting_on_vendor")
 SUPERSEDED = "superseded"  # a corrected invoice replaced this run; its decision stays as it was
 RESUME_AFTER_CONFIRM = HALTING_STAGES  # stages 1-2 are kept; 3 onwards runs again
@@ -80,9 +81,11 @@ def _required(text: str | None, what: str) -> str:
     return text
 
 
-def _log(db: Session, run_id: str, role: str, action: str, reason: str | None, changes: dict | None) -> None:
-    db.add(Review(run_id=run_id, reviewer=clip(Review, "reviewer", role), action=action, reason=reason,
-                  field_changes=changes or None))
+def _log(db: Session, run_id: str, role: str, action: str, reason: str | None, changes: dict | None) -> Review:
+    entry = Review(run_id=run_id, reviewer=clip(Review, "reviewer", role), action=action, reason=reason,
+                   field_changes=changes or None)
+    db.add(entry)
+    return entry
 
 
 def _rewind(db: Session, row: Invoice, keep_through: int) -> None:
@@ -264,13 +267,32 @@ def send_to_vendor(db: Session, row: Invoice, stages: list[RunStage], role: str,
     _restamp_decision(_decision_stage(stages), row.decision, "waiting_on_vendor", "warn",
                       f"Sent back to the vendor by {role}: {email['reasons_text']}.")
     alerts.discard_drafts(db, row.run_id)
-    _log(db, row.run_id, role, "send_to_vendor", email["reasons_text"], changes)
+    entry = _log(db, row.run_id, role, "send_to_vendor", email["reasons_text"], changes)
     db.commit()
     try:
-        alerts.send_back_to_vendor(db, row, email["subject"], email["body"], role)
+        alert = alerts.send_back_to_vendor(db, row, email["subject"], email["body"], role)
     except alerts.VendorEmailBlocked as e:  # _has_fraud already checked; this is the last line of defence
         raise ReviewError(409, str(e))
+    # History shows what went out: the live response link and the Ref in the subject.
+    entry.field_changes = {**changes, "email": {**changes["email"], "subject": alert.subject, "body": alert.body}}
     return Outcome(row.run_id, "send_to_vendor", row.status)
+
+
+def send_reminder(db: Session, row: Invoice, stages: list[RunStage], role: str) -> Outcome:
+    if row.status != "waiting_on_vendor":
+        raise ReviewError(409, "A reminder only goes out while the invoice is waiting on the vendor.")
+    if _has_fraud(stages):
+        raise ReviewError(409, "This invoice has a fraud finding, so nothing goes to the vendor. Finance verifies it "
+                               "by phone on the number on file.")
+    try:
+        alert = alerts.send_reminder(db, row, role)
+    except alerts.VendorEmailBlocked as e:
+        raise ReviewError(409, str(e))
+    except LookupError as e:
+        raise ReviewError(409, str(e))
+    _log(db, row.run_id, role, "send_reminder", "Reminder sent with a new response link",
+         {"email": {"label": "Reminder to vendor", "subject": alert.subject, "body": alert.body}})
+    return Outcome(row.run_id, "send_reminder", row.status)
 
 
 def supersede(db: Session, row: Invoice, role: str | None, new_run_id: str) -> None:
@@ -321,6 +343,8 @@ def apply(db: Session, run_id: str, action: str, role: str | None, *, fields: di
         out = override(db, row, stages, role, reason)
     elif action == "reject":
         out = reject(db, row, stages, role, reason)
+    elif action == "send_reminder":
+        out = send_reminder(db, row, stages, role)
     else:
         out = send_to_vendor(db, row, stages, role, reasons, note, subject, body)
     if out.resume_from is not None:

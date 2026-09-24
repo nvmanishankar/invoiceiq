@@ -285,7 +285,8 @@ def test_preview_follows_the_chosen_reasons_and_sends_nothing(client, emails):
     run_id = run(client, OVERBILL)
     emails.clear()
     full = preview(client, run_id).json()
-    assert full["subject"] == "[InvoiceIQ → Vendor: Acme Supplies] Invoice ACME/2026/0417 needs a correction"
+    assert full["subject"] == f"[InvoiceIQ → Vendor: Acme Supplies] Invoice ACME/2026/0417 needs a correction · Ref {run_id}"
+    assert "/respond/<link-created-when-sent>." in full["body"]  # the real link is made on sending
     assert "Only ₹1,18,000 remains on PO-2026-101; this invoice is ₹1,41,600." in full["body"]
     assert "Only 500 reams of A4 copier paper" in full["body"]  # the drafted note, from 6.6's evidence
 
@@ -308,21 +309,26 @@ def test_send_to_vendor_sends_the_edited_email(client, emails):
     emails.clear()
     draft = preview(client, run_id).json()
     subject = "Invoice ACME/2026/0417: please split it"
-    body = draft["body"].replace("Please reply with a corrected invoice.", "Please send two invoices instead.")
+    body = draft["body"].replace("Thank you,", "Please send two invoices instead.\n\nThank you,")
     r = review(client, run_id, "AP clerk", action="send_to_vendor", reasons=["6.5", "6.6"], note=draft["note"],
                subject=f"  {subject} ", body=body)
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "waiting_on_vendor"
 
-    assert emails == [{"subject": subject, "body": body.strip()}]  # exactly what the reviewer left
+    # What the reviewer left, with the live response link in place of the placeholder and the Ref on the subject.
+    (sent,) = emails
+    assert sent["subject"] == f"{subject} · Ref {run_id}"
+    live = sent["body"]
+    assert "<link-created-when-sent>" not in live and "Please send two invoices instead." in live
+    assert live.replace(live.split("/respond/")[1].split(".")[0], "<link-created-when-sent>") == body.strip()
     d = detail(client, run_id)
     assert d["status"] == "waiting_on_vendor" and d["decision"]["decision"] == "Hold"
     alert = [a for a in d["alerts"] if a["audience"] == "Vendor"][-1]  # after the run's own auto-sent one
-    assert alert["subject"] == subject and alert["status"] == "Sent" and alert["intended_for"].endswith("(accounts)")
+    assert alert["subject"] == sent["subject"] and alert["status"] == "Sent" and alert["intended_for"].endswith("(accounts)")
     rev = d["reviews"][0]
     assert rev["action"] == "send_to_vendor" and rev["reason"] == "Over PO balance, Quantity above ordered"
     email = rev["field_changes"]["email"]
-    assert email["subject"] == subject and email["body"] == body.strip() and email["reasons"] == ["6.5", "6.6"]
+    assert email["subject"] == sent["subject"] and email["body"] == live and email["reasons"] == ["6.5", "6.6"]
     assert email["email_edited"] is True and email["note_edited"] is False
     assert rev["field_changes"]["status"]["after"] == "waiting_on_vendor"
     assert client.get("/api/review-queue").json()["count"] == 0

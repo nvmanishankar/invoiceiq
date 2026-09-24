@@ -12,6 +12,7 @@ import type {
   SettingsInput,
   Stats,
   VendorEmailPreview,
+  VendorResponsePage,
   SuiteRun,
   TaxRate,
   VendorInput,
@@ -22,10 +23,13 @@ export class ApiError extends Error {
   status: number
   /** Form problems by field (e.g. "gstin", "lines.0.qty"), when the server sends them. */
   errors: Record<string, string>
-  constructor(status: number, message: string, errors: Record<string, string> = {}) {
+  /** Why a vendor response link can't be used: not_found / used / replaced / expired / closed / invalid / busy. */
+  state: string | null
+  constructor(status: number, message: string, errors: Record<string, string> = {}, state: string | null = null) {
     super(message)
     this.status = status
     this.errors = errors
+    this.state = state
   }
 }
 
@@ -33,14 +37,16 @@ async function check(res: Response): Promise<Response> {
   if (res.ok) return res
   let detail = `${res.status} ${res.statusText}`
   let errors: Record<string, string> = {}
+  let state: string | null = null
   try {
     const body = await res.json()
     if (typeof body?.detail === "string") detail = body.detail
     if (body?.errors && typeof body.errors === "object") errors = body.errors
+    if (typeof body?.state === "string") state = body.state
   } catch {
     // not JSON; keep the status line
   }
-  throw new ApiError(res.status, detail, errors)
+  throw new ApiError(res.status, detail, errors, state)
 }
 
 export async function getJson<T>(path: string): Promise<T> {
@@ -101,6 +107,17 @@ export async function uploadCorrected(runId: string, file: File, role: string): 
   const res = await check(await fetch(`/api/runs/${encodeURIComponent(runId)}/corrected`, {
     method: "POST", headers: { "X-Role": role }, body: form,
   }))
+  return res.json()
+}
+
+/** The vendor's response link: public, no role. POST never says what was decided. */
+export const getVendorResponse = (token: string) =>
+  getJson<VendorResponsePage>(`/api/respond/${encodeURIComponent(token)}`)
+export async function sendVendorResponse(token: string, file: File, message: string): Promise<{ message: string }> {
+  const form = new FormData()
+  form.append("file", file)
+  if (message.trim()) form.append("message", message.trim())
+  const res = await check(await fetch(`/api/respond/${encodeURIComponent(token)}`, { method: "POST", body: form }))
   return res.json()
 }
 

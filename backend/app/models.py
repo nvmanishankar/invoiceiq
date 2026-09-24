@@ -227,4 +227,5 @@ class Alert(Base):
     status: Mapped[str] = mapped_column(String(20), default="Drafted")  # Drafted / Sent / Failed
     response_token: Mapped[str | None] = mapped_column(String(64), unique=True)
     token_expires: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    token_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # the vendor responded with it
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

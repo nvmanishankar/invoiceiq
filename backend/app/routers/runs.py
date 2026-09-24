@@ -19,7 +19,7 @@ from app.db import SessionLocal, get_db
 from app.models import Invoice, RunFile, RunStage, Vendor
 from app.services import review as review_service
 from app.services import runs as run_service
-from app.services.views import decision_dict, run_detail, run_summary, stage_dict
+from app.services.views import decision_dict, run_detail, run_summary, stage_dict, waiting_since
 
 router = APIRouter(prefix="/api", tags=["runs"])
 
@@ -163,7 +163,7 @@ def list_samples():
 
 
 class ReviewBody(BaseModel):
-    action: Literal["confirm", "pick_po", "override", "send_to_vendor", "reject"]
+    action: Literal["confirm", "pick_po", "override", "send_to_vendor", "reject", "send_reminder"]
     fields: dict[str, Any] = Field(default_factory=dict, description="confirm: corrections, as the extraction stores them")
     po_id: str | None = None
     reason: str | None = None
@@ -177,7 +177,8 @@ class ReviewBody(BaseModel):
 def review_run(run_id: str, payload: ReviewBody, background: BackgroundTasks,
                x_role: str | None = Header(None, description="Procurement / AP clerk / Finance"),
                db: Session = Depends(get_db)):
-    """Confirm (resume from stage 3), pick PO (resume from stage 6), override, send to vendor, or reject."""
+    """Confirm (resume from stage 3), pick PO (resume from stage 6), override, send to vendor, remind the vendor,
+    or reject."""
     try:
         out = review_service.apply(db, run_id, payload.action, x_role, fields=payload.fields, po_id=payload.po_id,
                                    reason=payload.reason, note=payload.note, reasons=payload.reasons,
@@ -232,6 +233,10 @@ async def upload_corrected(run_id: str, request: Request, background: Background
 
 @router.get("/review-queue")
 def review_queue(db: Session = Depends(get_db)):
-    """Runs waiting for a person, oldest first (they've waited longest)."""
+    """Runs waiting for a person, oldest first (they've waited longest). `waiting` lists the runs parked on the
+    vendor, longest wait first; they aren't in `count`."""
     rows = db.scalars(select(Invoice).where(Invoice.status == "needs_review").order_by(Invoice.created_at)).all()
-    return {"count": len(rows), "runs": [run_summary(r) for r in rows]}
+    parked = [{**run_summary(r), "waiting_since": waiting_since(db, r)}
+              for r in db.scalars(select(Invoice).where(Invoice.status == "waiting_on_vendor"))]
+    parked.sort(key=lambda r: r["waiting_since"] or r["created_at"] or "")
+    return {"count": len(rows), "runs": [run_summary(r) for r in rows], "waiting": parked}

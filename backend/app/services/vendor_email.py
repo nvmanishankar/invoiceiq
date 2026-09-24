@@ -187,7 +187,9 @@ def _compose(db: Session, row: Invoice, findings: list[dict], selected: list[str
     company = db.scalar(select(CompanySettings).limit(1))
     facts = alerts.Facts(row, company, row.vendor, row.po_id)
     chosen = [stored_finding(f) for f in findings if f["code"] in selected]
-    return alerts.subject("Vendor", facts, "Hold", False), alerts.vendor_body(facts, "Hold", chosen, None, note or None)
+    # The link shows as a placeholder; the real one is made when the email is sent.
+    body = alerts.vendor_body(facts, "Hold", chosen, None, note or None, link=alerts.pending_link())
+    return alerts.subject("Vendor", facts, "Hold", False), body
 
 
 def preview(db: Session, row: Invoice, stages: list[RunStage], reasons: list[str] | None = None,

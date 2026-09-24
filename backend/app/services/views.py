@@ -49,6 +49,14 @@ def run_summary(inv: Invoice) -> dict:
     }
 
 
+def waiting_since(db: Session, inv: Invoice) -> str | None:
+    """When the run was last sent back to the vendor (a reminder doesn't restart the clock)."""
+    if inv.status != "waiting_on_vendor":
+        return None
+    return _iso(db.scalar(select(Review.created_at).where(Review.run_id == inv.run_id, Review.action == "send_to_vendor")
+                          .order_by(Review.id.desc()).limit(1)))
+
+
 def stage_dict(r: RunStage) -> dict:
     return {
         "order": r.stage_order,
@@ -249,6 +257,7 @@ def run_detail(db: Session, inv: Invoice) -> dict:
              "created_at": _iso(r.created_at)}
             for r in db.scalars(select(Review).where(Review.run_id == inv.run_id).order_by(Review.id))
         ],
+        "waiting_since": waiting_since(db, inv),
         "po": po,
         "comparison": comparison(lines, po),
         "has_file": db.scalar(select(RunFile.run_id).where(RunFile.run_id == inv.run_id)) is not None,

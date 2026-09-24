@@ -26,6 +26,24 @@ export function qty(n: number | null | undefined): string {
   return n == null ? "—" : new Intl.NumberFormat("en-IN").format(n)
 }
 
+/** How long since `iso`: "Waiting 3 days", "Waiting 5 hours", "Waiting under an hour". */
+export function waitingFor(iso: string | null | undefined, now = Date.now()): string {
+  if (!iso) return "Waiting on the vendor"
+  const hours = Math.floor((now - new Date(iso).getTime()) / 3_600_000)
+  if (Number.isNaN(hours) || hours < 1) return "Waiting under an hour"
+  if (hours < 24) return `Waiting ${hours} hour${hours === 1 ? "" : "s"}`
+  const days = Math.floor(hours / 24)
+  return `Waiting ${days} day${days === 1 ? "" : "s"}`
+}
+
+/** ISO timestamp → "14:32" in local time. */
+export function clock(iso: string | null | undefined): string {
+  if (!iso) return "—"
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+}
+
 /** ISO timestamp → "24 Sep 14:32" in local time. */
 export function when(iso: string | null | undefined): string {
   if (!iso) return "—"

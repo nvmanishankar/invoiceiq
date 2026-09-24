@@ -5,6 +5,7 @@ import { getVendorEmailPreview, previewVendorEmail } from "@/api"
 import { inputCls } from "@/components/ds/Field"
 import { PillButton } from "@/components/ds/PillButton"
 import { CodeChip } from "@/components/ds/StatusChip"
+import { clock, day } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { VendorEmailPreview, VendorReason } from "@/types"
 
@@ -20,19 +21,37 @@ const rowsFor = (text: string, min: number) => Math.max(min, text.split("\n").le
 
 export type VendorEmail = { reasons: string[]; note: string; subject: string; body: string }
 
-/** Send to vendor in two steps: pick reasons and edit the drafted note, then check and edit the email itself. */
-export function SendToVendor({ runId, busy, onSend }: { runId: string; busy: boolean; onSend: (email: VendorEmail) => void }) {
+/** Send to vendor in two steps: pick reasons and edit the drafted note, then check and edit the email itself.
+ * `alreadySent` is when an email already went to the vendor for this run; this one is then a follow-up. */
+export function SendToVendor({ runId, busy, alreadySent = null, onSend }: {
+  runId: string
+  busy: boolean
+  alreadySent?: string | null
+  onSend: (email: VendorEmail) => void
+}) {
   const draft = useQuery({ queryKey: ["vendor-email", runId], queryFn: () => getVendorEmailPreview(runId), staleTime: Infinity })
   if (draft.isLoading) return <p className="text-ink-3">Drafting the email…</p>
   if (draft.error) return <p role="alert" className="text-hold">{draft.error.message}</p>
   if (!draft.data) return null
-  return <Compose runId={runId} start={draft.data} busy={busy} onSend={onSend} />
+  return (
+    <div className="flex flex-col gap-4">
+      {alreadySent && (
+        <p className="rounded-input border border-line bg-surface px-4 py-3 text-[14px] text-ink">
+          An email already went to the vendor at {clock(alreadySent)}
+          {day(alreadySent) !== day(new Date().toISOString()) && ` on ${day(alreadySent)}`}. Sending again replaces its
+          response link.
+        </p>
+      )}
+      <Compose runId={runId} start={draft.data} busy={busy} followUp={!!alreadySent} onSend={onSend} />
+    </div>
+  )
 }
 
-function Compose({ runId, start, busy, onSend }: {
+function Compose({ runId, start, busy, followUp, onSend }: {
   runId: string
   start: VendorEmailPreview
   busy: boolean
+  followUp: boolean
   onSend: (email: VendorEmail) => void
 }) {
   const reasons = start.reasons
@@ -73,7 +92,8 @@ function Compose({ runId, start, busy, onSend }: {
         if (ready) onSend({ reasons: email.selected, note: email.note, subject, body })
       }}>
         <p className="font-mono text-[12px] leading-relaxed text-ink-3">
-          For {email.intended_for}. Like every email here, it's delivered to the owner's inbox.
+          For {email.intended_for}. Like every email here, it's delivered to the owner's inbox. The response link is
+          created when you send it.
         </p>
         <label className="flex flex-col gap-1.5">
           <span className="label">Subject</span>
@@ -88,7 +108,7 @@ function Compose({ runId, start, busy, onSend }: {
           <Limit n={body.length} max={email.limits.body} />
         </label>
         <Row>
-          <PillButton type="submit" disabled={busy || !ready}>Send to vendor</PillButton>
+          <PillButton type="submit" disabled={busy || !ready}>{followUp ? "Send follow-up" : "Send to vendor"}</PillButton>
           <PillButton type="button" variant="secondary" onClick={() => setEmail(null)} disabled={busy}>Back</PillButton>
           {edited && (
             <PillButton type="button" variant="link" arrow={false} disabled={busy}

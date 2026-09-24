@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.db import SessionLocal, init_db
-from app.routers import admin, alerts, pos, runs, stats, vendors
+from app.routers import admin, alerts, pos, respond, runs, stats, vendors
 from app.routers import settings as settings_router
 from app.seed import seed_if_empty
 from app.services.errors import Invalid
@@ -34,6 +34,7 @@ app.include_router(stats.router)
 app.include_router(pos.router)
 app.include_router(vendors.router)
 app.include_router(settings_router.router)
+app.include_router(respond.router)
 
 
 @app.exception_handler(Invalid)

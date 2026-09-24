@@ -8,6 +8,8 @@ const ACTION: Record<string, string> = {
   send_to_vendor: "Sent back to the vendor",
   reject: "Rejected",
   upload_corrected: "Uploaded a corrected invoice",
+  vendor_response: "Vendor responded via link",
+  send_reminder: "Sent a reminder to the vendor",
 }
 
 // Shown in their own way, not as "X changed from … to …".

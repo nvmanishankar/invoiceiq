@@ -1,8 +1,8 @@
 import { useState } from "react"
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
-import { ApiError, getReviewQueue, getRun, runFileUrl } from "@/api"
+import { ApiError, getReviewQueue, getRun, reviewRun, runFileUrl } from "@/api"
 import { PixelMascot } from "@/components/brand/PixelMascot"
 import { PillButton } from "@/components/ds/PillButton"
 import { PillLink } from "@/components/ds/PillLink"
@@ -10,6 +10,7 @@ import { RunLinks } from "@/components/ds/RunLinks"
 import { SectionTitle } from "@/components/ds/SectionTitle"
 import { SpeechBubble } from "@/components/ds/SpeechBubble"
 import { SplitContainer } from "@/components/ds/SplitContainer"
+import { waitingFor } from "@/lib/format"
 import { useRole } from "@/role"
 import type { RunDetail } from "@/types"
 import { DecisionCard } from "../process/DecisionCard"
@@ -28,6 +29,7 @@ export function ReviewPage() {
   const navigate = useNavigate()
   const queue = useQuery({ queryKey: ["review-queue"], queryFn: getReviewQueue, refetchInterval: 15_000 })
   const runs = queue.data?.runs ?? []
+  const parked = queue.data?.waiting ?? []
 
   // /review with a queue: open the invoice that has waited longest.
   if (!runId && runs.length) return <Navigate to={`/review/${encodeURIComponent(runs[0].run_id)}`} replace />
@@ -65,6 +67,26 @@ export function ReviewPage() {
           />
         ))}
       </nav>
+      {parked.length > 0 && (
+        <nav aria-label="Waiting on the vendor" className="flex flex-col gap-2.5">
+          <p className="label mb-1">Waiting on the vendor</p>
+          {parked.map((r, i) => (
+            <PillLink
+              key={r.run_id}
+              dot={runs.length + i}
+              active={r.run_id === runId}
+              label={`${r.vendor_name ?? r.file_name ?? r.run_id} · ${waitingFor(r.waiting_since)}`}
+              onClick={() => navigate(`/review/${encodeURIComponent(r.run_id)}`)}
+              hint={
+                <>
+                  <p className="font-mono text-[12px] text-ink-3">{r.run_id} · {r.invoice_no ?? "no invoice number"}</p>
+                  <p className="mt-2 text-ink">{waitingFor(r.waiting_since)} for a corrected invoice.</p>
+                </>
+              }
+            />
+          ))}
+        </nav>
+      )}
     </>
   )
 
@@ -142,12 +164,7 @@ function ReviewDetail({ run, onDone }: { run: RunDetail; onDone: (runId: string)
             : `This invoice is ${run.status.replace(/_/g, " ")}, so there's nothing to review.`}
         </p>
       )}
-      {run.status === "waiting_on_vendor" && (
-        <p role="status" className="rounded-card border border-hold/40 bg-hold-bg p-5 text-ink">
-          Waiting for the vendor to reply. When their corrected invoice arrives, upload it below. You can still correct
-          it, override or reject it here.
-        </p>
-      )}
+      {run.status === "waiting_on_vendor" && <WaitingOnVendor run={run} fraud={!!fraudFinding} />}
 
       {run.decision && <DecisionCard decision={run.decision} fraudFinding={fraudFinding} />}
 
@@ -198,6 +215,39 @@ function ReviewDetail({ run, onDone }: { run: RunDetail; onDone: (runId: string)
       )}
 
       <Timeline stages={run.stages} running={false} />
+    </div>
+  )
+}
+
+/** A run parked on the vendor: how long it has waited, and a reminder with a fresh response link. */
+function WaitingOnVendor({ run, fraud }: { run: RunDetail; fraud: boolean }) {
+  const { role } = useRole()
+  const qc = useQueryClient()
+  const remind = useMutation({
+    mutationFn: () => reviewRun(run.run_id, { action: "send_reminder" }, role),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["run", run.run_id] })
+      qc.invalidateQueries({ queryKey: ["alerts"] })
+    },
+  })
+  return (
+    <div role="status" className="flex flex-col gap-4 rounded-card border border-hold/40 bg-hold-bg p-5 text-ink">
+      <p>
+        <span className="font-medium">{waitingFor(run.waiting_since)}.</span> Waiting for the vendor to reply. Their
+        corrected invoice arrives through the link in our email, or upload it below when it comes by email. You can
+        still correct it, override or reject it here.
+      </p>
+      {!fraud && (
+        <div className="flex flex-wrap items-center gap-3">
+          <PillButton variant="secondary" disabled={remind.isPending} onClick={() => remind.mutate()}>
+            {remind.isPending ? "Sending…" : "Send reminder"}
+          </PillButton>
+          <span className="text-[13px] text-ink-2">
+            {remind.isSuccess ? "Reminder sent with a new link; the old link no longer works." : "Re-sends the last email with a new 7-day link."}
+          </span>
+        </div>
+      )}
+      {remind.error && <p role="alert" className="text-[14px] text-reject">{remind.error.message}</p>}
     </div>
   )
 }

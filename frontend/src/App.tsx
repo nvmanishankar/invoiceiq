@@ -7,6 +7,7 @@ import { Placeholder } from "@/pages/Placeholder"
 import { OutboxPage } from "@/pages/outbox/OutboxPage"
 import { PosPage } from "@/pages/pos/PosPage"
 import { ProcessPage } from "@/pages/process/ProcessPage"
+import { RespondPage } from "@/pages/respond/RespondPage"
 import { ReviewPage } from "@/pages/review/ReviewPage"
 import { SettingsPage } from "@/pages/settings/SettingsPage"
 import { Styleguide } from "@/pages/Styleguide"
@@ -33,6 +34,8 @@ export default function App() {
   return (
     <RoleProvider>
       <Routes>
+        {/* The vendor's page: public, outside the app shell (no nav, no role). */}
+        <Route path="/respond/:token" element={<RespondPage />} />
         <Route element={<AppShell />}>
           <Route index element={<Navigate to="/process" replace />} />
           <Route path="/review/:runId" element={<ReviewPage />} />

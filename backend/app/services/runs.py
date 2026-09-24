@@ -82,11 +82,18 @@ def start_corrected_run(parent_id: str, file_bytes: bytes, file_name: str | None
         parent = db.get(Invoice, parent_id)
         if parent is None:
             raise review.ReviewError(404, f"Run {parent_id} not found.")
-        _check_cap(db)
-        run_id = new_run_id()
-        review.supersede(db, parent, role, run_id)
-        create_run(db, file_bytes, file_name, today=today(), store_file=True, run_id=run_id, parent_upload_id=parent_id)
-        return run_id
+        return create_corrected_run(db, parent, file_bytes, file_name, role)
+
+
+def create_corrected_run(db: Session, parent: Invoice, file_bytes: bytes, file_name: str | None,
+                         role: str | None) -> str:
+    """The shared part of a corrected upload (reviewer or vendor link). Anything else pending on `db` is committed
+    with the new run."""
+    _check_cap(db)
+    run_id = new_run_id()
+    review.supersede(db, parent, role, run_id)
+    create_run(db, file_bytes, file_name, today=today(), store_file=True, run_id=run_id, parent_upload_id=parent.run_id)
+    return run_id
 
 
 def execute_run(run_id: str) -> None:

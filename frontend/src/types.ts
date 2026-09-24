@@ -115,6 +115,8 @@ export type RunDetail = {
   has_file: boolean
   parent_upload_id: string | null
   replaced_by: string | null
+  /** When it was last sent back to the vendor; null unless it's waiting on them. */
+  waiting_since: string | null
 }
 
 export type AlertStatus = "Drafted" | "Sent" | "Failed"
@@ -186,7 +188,22 @@ export type RunSummary = {
   parent_upload_id?: string | null
 }
 
-export type ReviewQueue = { count: number; runs: RunSummary[] }
+/** `runs` need a person; `waiting` are parked on the vendor, longest wait first (not in `count`). */
+export type ReviewQueue = { count: number; runs: RunSummary[]; waiting: (RunSummary & { waiting_since: string | null })[] }
+
+/** GET /api/respond/{token}: only what the vendor may see. */
+export type VendorResponsePage = {
+  company_name: string | null
+  vendor_name: string
+  invoice_no: string | null
+  invoice_date: string | null
+  total_display: string | null
+  po_id: string | null
+  issues: string[]
+  /** "01 Oct 2026", exactly as the email printed it. */
+  expires_on: string
+  message_max: number
+}
 
 /** One reason chip: a case code on this run the vendor can fix, and the note lines drafted from its evidence. */
 export type VendorReason = { code: string; title: string; messages: string[]; suggestions: string[] }
@@ -221,6 +238,7 @@ export type ReviewAction =
   | { action: "override"; reason: string }
   | { action: "send_to_vendor"; reasons: string[]; note: string; subject: string; body: string }
   | { action: "reject"; reason: string }
+  | { action: "send_reminder" }
 
 export type Money = { paise: number; display: string }
 
