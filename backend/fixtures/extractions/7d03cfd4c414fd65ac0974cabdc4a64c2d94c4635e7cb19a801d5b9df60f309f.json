@@ -1,0 +1,51 @@
+{
+  "file_hash": "7d03cfd4c414fd65ac0974cabdc4a64c2d94c4635e7cb19a801d5b9df60f309f",
+  "source": "03_edge_inferred_po_acme.pdf",
+  "model": "gemini-3.5-flash-lite",
+  "extracted_at": "2026-09-24T01:14:05+00:00",
+  "extraction": {
+    "doc_type": "invoice",
+    "invoices": [
+      {
+        "page_range": [
+          1
+        ],
+        "vendor_name": "ACME SUPPLIES PRIVATE LIMITED",
+        "vendor_gstin": "36AABCA1234F1ZA",
+        "invoice_number": "ACME/2026/0402",
+        "invoice_date": "2026-09-15",
+        "po_reference": null,
+        "currency": "INR",
+        "lines": [
+          {
+            "description": "ErgoPro Mesh Ergonomic Chair",
+            "hsn": "9401",
+            "qty": 20.0,
+            "unit": "pcs",
+            "unit_price": 5000.0,
+            "tax_rate": 18.0,
+            "amount": 100000.0
+          }
+        ],
+        "subtotal": 100000.0,
+        "cgst": 9000.0,
+        "sgst": 9000.0,
+        "igst": null,
+        "total": 118000.0,
+        "tax_inclusive": false,
+        "bank_account": "50100234564521",
+        "ifsc": "HDFC0001234",
+        "payment_terms_days": null,
+        "confidence": {
+          "invoice_number": "high",
+          "invoice_date": "high",
+          "total": "high",
+          "vendor_gstin": "high",
+          "bank_account": "high",
+          "po_reference": null
+        }
+      }
+    ],
+    "boundaries_clear": true
+  }
+}

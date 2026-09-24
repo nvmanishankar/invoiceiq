@@ -1,0 +1,60 @@
+{
+  "file_hash": "fdcbddbcff456f004b7f6e5469d792be17c0d3c1582d357ba42966222953ab15",
+  "source": "01_happy_deccan.pdf",
+  "model": "gemini-3.5-flash-lite",
+  "extracted_at": "2026-09-24T01:12:58+00:00",
+  "extraction": {
+    "doc_type": "invoice",
+    "invoices": [
+      {
+        "page_range": [
+          1
+        ],
+        "vendor_name": "Deccan Office Interiors",
+        "vendor_gstin": "36AAKFD3456Q1ZT",
+        "invoice_number": "DOI/2026-27/0158",
+        "invoice_date": "2026-09-20",
+        "po_reference": "PO-2026-109",
+        "currency": "INR",
+        "lines": [
+          {
+            "description": "Workstation desk 1400mm",
+            "hsn": "9403",
+            "qty": 10.0,
+            "unit": "pcs",
+            "unit_price": 18000.0,
+            "tax_rate": 18.0,
+            "amount": 180000.0
+          },
+          {
+            "description": "Pedestal drawer unit",
+            "hsn": "9403",
+            "qty": 10.0,
+            "unit": "pcs",
+            "unit_price": 4500.0,
+            "tax_rate": 18.0,
+            "amount": 45000.0
+          }
+        ],
+        "subtotal": 225000.0,
+        "cgst": 20250.0,
+        "sgst": 20250.0,
+        "igst": null,
+        "total": 265500.0,
+        "tax_inclusive": false,
+        "bank_account": "61234567890123",
+        "ifsc": "ICIC0001122",
+        "payment_terms_days": 60,
+        "confidence": {
+          "invoice_number": "high",
+          "invoice_date": "high",
+          "total": "high",
+          "vendor_gstin": "high",
+          "bank_account": "high",
+          "po_reference": "high"
+        }
+      }
+    ],
+    "boundaries_clear": true
+  }
+}

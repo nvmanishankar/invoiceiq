@@ -1,0 +1,60 @@
+{
+  "file_hash": "d86f83891d6c3a7105d3a685e803a840b113923dcacaf590f102a98462051f0b",
+  "source": "02_happy_brighttech_scan.pdf",
+  "model": "gemini-3.5-flash-lite",
+  "extracted_at": "2026-09-24T01:13:47+00:00",
+  "extraction": {
+    "doc_type": "invoice",
+    "invoices": [
+      {
+        "page_range": [
+          1
+        ],
+        "vendor_name": "BRIGHTTECH SOLUTIONS",
+        "vendor_gstin": "29AAFCB5678K1Z1",
+        "invoice_number": "BT/26/0874",
+        "invoice_date": "2026-09-22",
+        "po_reference": "PO 105",
+        "currency": "Rs.",
+        "lines": [
+          {
+            "description": "Dell Latitude 5440 laptop, i5, 16GB RAM",
+            "hsn": "8471",
+            "qty": 10.0,
+            "unit": null,
+            "unit_price": 65000.0,
+            "tax_rate": 18.0,
+            "amount": 650000.0
+          },
+          {
+            "description": "Laptop backpack 15.6 inch",
+            "hsn": "4202",
+            "qty": 10.0,
+            "unit": null,
+            "unit_price": 1200.0,
+            "tax_rate": 18.0,
+            "amount": 12000.0
+          }
+        ],
+        "subtotal": 662000.0,
+        "cgst": null,
+        "sgst": null,
+        "igst": 119160.0,
+        "total": 781160.0,
+        "tax_inclusive": false,
+        "bank_account": "91201004455667",
+        "ifsc": "UTIB0000123",
+        "payment_terms_days": 30,
+        "confidence": {
+          "invoice_number": "high",
+          "invoice_date": "high",
+          "total": "high",
+          "vendor_gstin": "high",
+          "bank_account": "high",
+          "po_reference": "high"
+        }
+      }
+    ],
+    "boundaries_clear": true
+  }
+}

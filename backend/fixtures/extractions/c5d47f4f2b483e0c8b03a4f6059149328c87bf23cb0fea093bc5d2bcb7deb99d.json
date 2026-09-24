@@ -1,0 +1,51 @@
+{
+  "file_hash": "c5d47f4f2b483e0c8b03a4f6059149328c87bf23cb0fea093bc5d2bcb7deb99d",
+  "source": "09_extra_missing_date_deccan.pdf",
+  "model": "gemini-3.5-flash-lite",
+  "extracted_at": "2026-09-24T01:15:27+00:00",
+  "extraction": {
+    "doc_type": "invoice",
+    "invoices": [
+      {
+        "page_range": [
+          1
+        ],
+        "vendor_name": "Deccan Office Interiors",
+        "vendor_gstin": "36AAKFD3456Q1ZT",
+        "invoice_number": "DOI/2026-27/0171",
+        "invoice_date": null,
+        "po_reference": "PO-2026-110",
+        "currency": "INR",
+        "lines": [
+          {
+            "description": "Conference table, 8-seater",
+            "hsn": "9403",
+            "qty": 2.0,
+            "unit": "pcs",
+            "unit_price": 35000.0,
+            "tax_rate": 18.0,
+            "amount": 70000.0
+          }
+        ],
+        "subtotal": 70000.0,
+        "cgst": 6300.0,
+        "sgst": 6300.0,
+        "igst": null,
+        "total": 82600.0,
+        "tax_inclusive": false,
+        "bank_account": "61234567890123",
+        "ifsc": "ICIC0001122",
+        "payment_terms_days": null,
+        "confidence": {
+          "invoice_number": "high",
+          "invoice_date": null,
+          "total": "high",
+          "vendor_gstin": "high",
+          "bank_account": "high",
+          "po_reference": "high"
+        }
+      }
+    ],
+    "boundaries_clear": true
+  }
+}

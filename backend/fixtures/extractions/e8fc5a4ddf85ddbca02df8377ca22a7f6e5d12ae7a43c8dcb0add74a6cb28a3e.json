@@ -1,0 +1,60 @@
+{
+  "file_hash": "e8fc5a4ddf85ddbca02df8377ca22a7f6e5d12ae7a43c8dcb0add74a6cb28a3e",
+  "source": "07_extra_quotation_acme.pdf",
+  "model": "gemini-3.5-flash-lite",
+  "extracted_at": "2026-09-24T01:15:19+00:00",
+  "extraction": {
+    "doc_type": "quotation",
+    "invoices": [
+      {
+        "page_range": [
+          1
+        ],
+        "vendor_name": "ACME SUPPLIES PRIVATE LIMITED",
+        "vendor_gstin": "36AABCA1234F1ZA",
+        "invoice_number": "QT/ACME/2026/077",
+        "invoice_date": "2026-09-22",
+        "po_reference": null,
+        "currency": "INR",
+        "lines": [
+          {
+            "description": "Ergonomic office chair, mesh back",
+            "hsn": "9401",
+            "qty": 10.0,
+            "unit": "pcs",
+            "unit_price": 5200.0,
+            "tax_rate": 18.0,
+            "amount": 52000.0
+          },
+          {
+            "description": "Chair floor mat",
+            "hsn": "3918",
+            "qty": 10.0,
+            "unit": "pcs",
+            "unit_price": 1350.0,
+            "tax_rate": 18.0,
+            "amount": 13500.0
+          }
+        ],
+        "subtotal": 65500.0,
+        "cgst": null,
+        "sgst": null,
+        "igst": null,
+        "total": null,
+        "tax_inclusive": false,
+        "bank_account": null,
+        "ifsc": null,
+        "payment_terms_days": null,
+        "confidence": {
+          "invoice_number": "high",
+          "invoice_date": "high",
+          "total": null,
+          "vendor_gstin": "high",
+          "bank_account": null,
+          "po_reference": null
+        }
+      }
+    ],
+    "boundaries_clear": true
+  }
+}

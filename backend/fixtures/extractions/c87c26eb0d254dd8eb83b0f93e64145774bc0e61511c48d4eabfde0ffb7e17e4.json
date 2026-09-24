@@ -1,0 +1,51 @@
+{
+  "file_hash": "c87c26eb0d254dd8eb83b0f93e64145774bc0e61511c48d4eabfde0ffb7e17e4",
+  "source": "04_edge_split_overbill_acme.pdf",
+  "model": "gemini-3.5-flash-lite",
+  "extracted_at": "2026-09-24T01:14:08+00:00",
+  "extraction": {
+    "doc_type": "invoice",
+    "invoices": [
+      {
+        "page_range": [
+          1
+        ],
+        "vendor_name": "ACME SUPPLIES PRIVATE LIMITED",
+        "vendor_gstin": "36AABCA1234F1ZA",
+        "invoice_number": "ACME/2026/0417",
+        "invoice_date": "2026-09-18",
+        "po_reference": "PO-2026-101",
+        "currency": "INR",
+        "lines": [
+          {
+            "description": "A4 copier paper 75gsm (ream of 500 sheets)",
+            "hsn": "4802",
+            "qty": 600.0,
+            "unit": "ream",
+            "unit_price": 200.0,
+            "tax_rate": 18.0,
+            "amount": 120000.0
+          }
+        ],
+        "subtotal": 120000.0,
+        "cgst": 10800.0,
+        "sgst": 10800.0,
+        "igst": null,
+        "total": 141600.0,
+        "tax_inclusive": false,
+        "bank_account": "50100234564521",
+        "ifsc": "HDFC0001234",
+        "payment_terms_days": null,
+        "confidence": {
+          "invoice_number": "high",
+          "invoice_date": "high",
+          "total": "high",
+          "vendor_gstin": "high",
+          "bank_account": "high",
+          "po_reference": "high"
+        }
+      }
+    ],
+    "boundaries_clear": true
+  }
+}

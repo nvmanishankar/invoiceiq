@@ -1,0 +1,51 @@
+{
+  "file_hash": "0d4ba437670516d934ff6218bf218bf6ca360f511a902a5bbac49ba3ebae7963",
+  "source": "10_extra_blocked_quickfix.pdf",
+  "model": "gemini-3.5-flash-lite",
+  "extracted_at": "2026-09-24T01:15:33+00:00",
+  "extraction": {
+    "doc_type": "invoice",
+    "invoices": [
+      {
+        "page_range": [
+          1
+        ],
+        "vendor_name": "QUICKFIX TRADERS",
+        "vendor_gstin": "33AAQFQ1122B1ZS",
+        "invoice_number": "QFT/0093",
+        "invoice_date": "2026-09-19",
+        "po_reference": "PO-2026-099",
+        "currency": "Rs.",
+        "lines": [
+          {
+            "description": "Toner cartridge, compatible",
+            "hsn": "8443",
+            "qty": 20.0,
+            "unit": "pcs",
+            "unit_price": 2500.0,
+            "tax_rate": 18.0,
+            "amount": 50000.0
+          }
+        ],
+        "subtotal": 50000.0,
+        "cgst": null,
+        "sgst": null,
+        "igst": 9000.0,
+        "total": 59000.0,
+        "tax_inclusive": false,
+        "bank_account": "11223344556677",
+        "ifsc": "IOBA0000789",
+        "payment_terms_days": null,
+        "confidence": {
+          "invoice_number": "high",
+          "invoice_date": "high",
+          "total": "high",
+          "vendor_gstin": "high",
+          "bank_account": "high",
+          "po_reference": "high"
+        }
+      }
+    ],
+    "boundaries_clear": true
+  }
+}

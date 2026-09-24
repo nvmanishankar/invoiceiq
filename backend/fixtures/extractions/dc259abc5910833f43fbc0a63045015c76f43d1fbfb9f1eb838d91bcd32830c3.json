@@ -1,0 +1,51 @@
+{
+  "file_hash": "dc259abc5910833f43fbc0a63045015c76f43d1fbfb9f1eb838d91bcd32830c3",
+  "source": "06_edge_bank_changed_brighttech.pdf",
+  "model": "gemini-3.5-flash-lite",
+  "extracted_at": "2026-09-24T01:15:14+00:00",
+  "extraction": {
+    "doc_type": "invoice",
+    "invoices": [
+      {
+        "page_range": [
+          1
+        ],
+        "vendor_name": "BrightTech Solutions Pvt Ltd",
+        "vendor_gstin": "29AAFCB5678K1Z1",
+        "invoice_number": "BT/26/0917",
+        "invoice_date": "2026-09-20",
+        "po_reference": "PO-2026-116",
+        "currency": "Rs.",
+        "lines": [
+          {
+            "description": "27 inch IPS monitor",
+            "hsn": "8528",
+            "qty": 15.0,
+            "unit": null,
+            "unit_price": 14000.0,
+            "tax_rate": 18.0,
+            "amount": 210000.0
+          }
+        ],
+        "subtotal": 210000.0,
+        "cgst": null,
+        "sgst": null,
+        "igst": 37800.0,
+        "total": 247800.0,
+        "tax_inclusive": false,
+        "bank_account": "50200099887766",
+        "ifsc": "HDFC0009876",
+        "payment_terms_days": 30,
+        "confidence": {
+          "invoice_number": "high",
+          "invoice_date": "high",
+          "total": "high",
+          "vendor_gstin": "high",
+          "bank_account": "high",
+          "po_reference": "high"
+        }
+      }
+    ],
+    "boundaries_clear": true
+  }
+}
