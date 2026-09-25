@@ -160,7 +160,8 @@ CASES = [
     _c("7.3", "Re-scanned copy", "Same vendor, amount and date under a different number.", "Reject",
        ["Vendor", "AP"], also="Hold", note="Reject if the first one was approved; Hold if it's still open."),
     _c("7.4", "Possible duplicate", f"Same vendor and amount, different number, dated within "
-       f"{config.NEAR_DUPLICATE_DAYS} days.", "Hold", ["AP"]),
+       f"{config.NEAR_DUPLICATE_DAYS} days, and the same PO, no PO, or a shared item.", "Hold", ["AP"],
+       note="Different POs with different items aren't duplicates: noted on the stage, no finding."),
     _c("7.5", "Recurring invoice", "A genuine monthly bill: different number and billing period.", "Pass",
        status=DESIGNED,
        note=f"Billing periods aren't read yet. A same-amount bill within {config.NEAR_DUPLICATE_DAYS} days is "

@@ -1,14 +1,18 @@
 """One test per finding code used by samples 01-10, on small changes to the committed extractions."""
 
 import pytest
+from sqlalchemy import select
 
-from app.models import Invoice
+from app import llm
+from app.config import BACKEND_DIR
+from app.models import Invoice, RunStage
 from app.pipeline import s1_read, s2_extract
-from app.pipeline.runner import create_run
+from app.pipeline.runner import create_run, file_hash
 from app.utils.gstin import gstin_checksum
-from tests.helpers import SAMPLES, finding, run_rules, sample_extraction
+from tests.helpers import SAMPLES, finding, run_rules, run_sample, sample_extraction
 
 DECCAN = "01_happy_deccan.pdf"
+INFERRED_ACME = "03_edge_inferred_po_acme.pdf"  # ACME/2026/0402, ₹1,18,000, PO-2026-104 (inferred), a chair
 BRIGHTTECH = "06_edge_bank_changed_brighttech.pdf"
 
 
@@ -196,6 +200,39 @@ def test_7_4_same_amount_within_30_days(db):
     ex = sample_extraction("05_edge_duplicate_sahyadri_scan.pdf")
     ex["invoice_number"], ex["invoice_date"] = "SPH/INV-0077", "2026-09-15"
     assert finding(run_rules(db, ex), "7.4").audience == ["AP"]
+
+
+def corrected_acme() -> dict:
+    """ACME/2026/0417 corrected to ₹1,18,000: PO-2026-101, copier paper (page 1 of tests/data/two_invoices.pdf)."""
+    cached = llm.load_cache(file_hash((BACKEND_DIR / "tests" / "data" / "two_invoices.pdf").read_bytes()))
+    return cached.invoices[0].model_dump(mode="json")
+
+
+def test_7_4_not_raised_for_a_different_po_and_different_items(db):
+    first = run_sample(db, INFERRED_ACME)
+    assert (first.decision, first.po.po_id) == ("Approve", "PO-2026-104")
+    ctx = run_rules(db, corrected_acme())
+    assert "7.4" not in ctx.codes() and ctx.decision == "Approve"
+    stage = db.scalars(select(RunStage).where(RunStage.run_id == ctx.run_id, RunStage.stage_name == "Duplicates")).one()
+    assert stage.status == "pass" and stage.details["duplicate_of"] == []
+    assert stage.details["notes"] == [
+        "Same amount as ACME/2026/0402, but a different PO and different items, so not a duplicate"]
+
+
+def test_7_4_same_po_still_holds(db):
+    first = run_sample(db, INFERRED_ACME)
+    db.get(Invoice, first.run_id).po_id = "PO-2026-101"  # same PO as the corrected invoice; items still differ
+    db.commit()
+    ctx = run_rules(db, corrected_acme())
+    assert finding(ctx, "7.4").evidence["invoice_no"] == "ACME/2026/0402" and ctx.decision == "Hold"
+
+
+def test_7_4_invoice_without_a_po_still_holds(db):
+    first = run_sample(db, INFERRED_ACME)
+    db.get(Invoice, first.run_id).po_id = None  # say no PO could be matched for it
+    db.commit()
+    ctx = run_rules(db, corrected_acme())
+    assert finding(ctx, "7.4").evidence["duplicate_of"] == first.run_id and ctx.decision == "Hold"
 
 
 # --- stage 8 --------------------------------------------------------------------

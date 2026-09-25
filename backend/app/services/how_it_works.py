@@ -30,7 +30,7 @@ PO_STAGE = 5
 AMOUNTS_STAGE = 6
 
 # `pytest -q` in backend/, including the test that checks this number (tests/test_how_it_works.py).
-AUTOMATED_TESTS = 409
+AUTOMATED_TESTS = 412
 
 # Who may do what, as the server enforces it. `rule`:
 #   anyone       no role check

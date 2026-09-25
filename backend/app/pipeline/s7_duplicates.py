@@ -10,7 +10,7 @@ from app.services.po import APPROVED
 SUPERSEDED = "superseded"  # services.review.SUPERSEDED; imported from there it would be circular
 SPLIT = "split"  # pipeline.split.SPLIT: the combined file itself isn't an invoice to compare against
 from app.utils.money import format_inr
-from app.utils.normalise import core_number, norm_full
+from app.utils.normalise import core_number, norm_full, text_key
 
 
 def _when(d) -> str:
@@ -21,10 +21,15 @@ def _prior_state(prior: Invoice) -> str:
     return "already approved" if prior.decision == APPROVED else f"still open ({(prior.decision or 'in progress').lower()})"
 
 
+def _items_overlap(mine: set[str], prior: Invoice) -> bool:
+    return bool(mine & {text_key(line.description) for line in prior.lines} - {""})
+
+
 def run(ctx: RunContext) -> StageResult:
     inv = ctx.inv
     before = len(ctx.findings)
     linked: list[str] = []
+    notes: list[str] = []
     # A corrected invoice isn't a duplicate of the run it replaces, nor of any run a correction already replaced.
     me = ctx.db.get(Invoice, ctx.run_id)
     skip = [ctx.run_id] + ([me.parent_upload_id] if me is not None and me.parent_upload_id else [])
@@ -44,6 +49,8 @@ def run(ctx: RunContext) -> StageResult:
         Invoice.vendor_id == ctx.vendor.vendor_id, *live,
         Invoice.decision.is_not(None), Invoice.decision != "Reject").order_by(Invoice.invoice_date)).all()
     no_full, no_core = norm_full(inv.invoice_no), core_number(inv.invoice_no)
+    my_po = ctx.po.po_id if ctx.po is not None else None
+    my_items = {text_key(line.description) for line in inv.lines} - {""}
     for prior in priors:
         if prior.run_id in linked:
             continue
@@ -66,12 +73,19 @@ def run(ctx: RunContext) -> StageResult:
             linked.append(prior.run_id)
         elif same_total and inv.invoice_date and prior.invoice_date \
                 and abs((prior.invoice_date - inv.invoice_date).days) <= NEAR_DUPLICATE_DAYS:
+            # Only a possible duplicate if it could be the same purchase: a shared PO, a missing PO, or a shared item.
+            if my_po and prior.po_id and my_po != prior.po_id and not _items_overlap(my_items, prior):
+                notes.append(f"Same amount as {prior.invoice_no}, but a different PO and different items, "
+                             f"so not a duplicate")
+                continue
             ctx.add("7.4", "hold", f"Same amount ({format_inr(prior.total_paise)}) as {prior.invoice_no} from "
                                    f"{_when(prior.invoice_date)} ({prior.run_id}). Possible duplicate.", ["AP"], evidence)
             linked.append(prior.run_id)
 
     new = ctx.findings[before:]
     details = {"checked": len(priors), "duplicate_of": linked}
+    if notes:
+        details["notes"] = notes
     if any(f.severity == "reject" for f in new):
         return StageResult("fail", new[0].message, details)
     if new:
