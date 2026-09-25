@@ -131,6 +131,7 @@ class RunContext:
     today: date = field(default_factory=date.today)
     page_count: int = 0
     text: str = ""
+    page_texts: list[str] = field(default_factory=list)  # stage 1: the text of each page, for splitting (1.6)
     is_scan: bool = False
     llm_calls: int = 0
     doc_type: str | None = None
@@ -146,6 +147,9 @@ class RunContext:
     decision: str | None = None
     findings: list[Finding] = field(default_factory=list)
     halt: bool = False  # only for "can't continue" (unreadable, not an invoice)
+    split_parts: list | None = None  # stage 2 (1.6): [(ExtractedInvoice, pages)] when the file holds several invoices
+    children: list[str] = field(default_factory=list)  # the child runs a split created, in page order
+    sibling_fraud: list[str] = field(default_factory=list)  # split child: siblings with a fraud finding (4.6, 4.7)
     offline: bool = False  # cached answers only: never call the LLM (the test suite)
     send_emails: bool = True  # False: alerts are stored as Drafted and nothing is sent (the test suite)
     _fields: InvoiceFields | None = field(default=None, repr=False)

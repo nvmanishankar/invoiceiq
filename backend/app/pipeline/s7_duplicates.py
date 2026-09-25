@@ -8,6 +8,7 @@ from app.pipeline.context import RunContext, StageResult, summarise
 from app.services.po import APPROVED
 
 SUPERSEDED = "superseded"  # services.review.SUPERSEDED; imported from there it would be circular
+SPLIT = "split"  # pipeline.split.SPLIT: the combined file itself isn't an invoice to compare against
 from app.utils.money import format_inr
 from app.utils.normalise import core_number, norm_full
 
@@ -27,7 +28,7 @@ def run(ctx: RunContext) -> StageResult:
     # A corrected invoice isn't a duplicate of the run it replaces, nor of any run a correction already replaced.
     me = ctx.db.get(Invoice, ctx.run_id)
     skip = [ctx.run_id] + ([me.parent_upload_id] if me is not None and me.parent_upload_id else [])
-    live = (Invoice.run_id.not_in(skip), Invoice.status != SUPERSEDED)
+    live = (Invoice.run_id.not_in(skip), Invoice.status.not_in((SUPERSEDED, SPLIT)))
 
     # 7.1: this exact file, any vendor. Rejected runs don't count: a rejected file may be sent again.
     same_file = ctx.db.scalars(select(Invoice).where(

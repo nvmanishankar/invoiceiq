@@ -21,6 +21,7 @@ def run(ctx: RunContext) -> StageResult:
         return StageResult("fail", "File can't be opened", {})
 
     ctx.page_count = len(texts)
+    ctx.page_texts = texts
     ctx.text = "\n".join(texts)
     chars = len(ctx.text.strip())
     ctx.is_scan = chars < MIN_CHARS_PER_PAGE * ctx.page_count

@@ -18,6 +18,7 @@ const STATUSES = [
   { value: "waiting_on_vendor", label: "Waiting on vendor" },
   { value: "rejected", label: "Rejected" },
   { value: "superseded", label: "Superseded" },
+  { value: "split", label: "Split" },
   { value: "running", label: "Running" },
 ]
 const DECISION_CHIP: Record<Decision, StageStatus> = { Approve: "pass", Hold: "warn", Reject: "fail" }
@@ -25,6 +26,7 @@ const STATUS_NOTE: Record<string, string> = {
   needs_review: "In review queue",
   waiting_on_vendor: "Waiting on vendor",
   superseded: "Replaced by a corrected invoice",
+  split: "Several invoices, each checked on its own",
 }
 const TRIGGER = "h-11! w-full rounded-full! border-line bg-raised pr-3 pl-4 text-[14px] text-ink hover:border-ink sm:w-52"
 
@@ -73,6 +75,7 @@ export function RunsTable({ vendors, openId, onOpen }: { vendors: Stats["vendors
         <div className="flex flex-col items-start gap-1">
           {r.status === "running" ? <StatusChip status="info" word="Running" />
             : r.status === "superseded" ? <StatusChip status="info" word="Superseded" />
+            : r.status === "split" ? <StatusChip status="info" word="Split" />
             : r.decision ? <StatusChip status={DECISION_CHIP[r.decision]} word={DECISION_WORD[r.decision]} /> : "—"}
           {STATUS_NOTE[r.status] && <span className="text-[12px] text-ink-3">{STATUS_NOTE[r.status]}</span>}
         </div>

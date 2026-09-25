@@ -26,6 +26,7 @@ AMOUNTS_STAGE = 6
 EXTRACT_STAGE = 2
 TOP_REASONS = 8
 SUPERSEDED = "superseded"  # services.review.SUPERSEDED
+SPLIT = "split"  # pipeline.split.SPLIT: a file of several invoices; its children are the runs that count
 
 
 @dataclass
@@ -50,14 +51,14 @@ def _load(db: Session) -> list[RunFacts]:
         select(Invoice.run_id, Invoice.status, Invoice.decision, Invoice.total_paise, Invoice.created_at,
                Invoice.finished_at, Invoice.vendor_id, Vendor.name)
         .outerjoin(Vendor, Vendor.vendor_id == Invoice.vendor_id)
-        .where(Invoice.is_seed.is_(False))
+        .where(Invoice.is_seed.is_(False), Invoice.status != SPLIT)
     ).all()
     runs = {r.run_id: RunFacts(*r) for r in rows}
 
     stages = db.execute(
         select(RunStage.run_id, RunStage.stage_order, RunStage.duration_ms, RunStage.details)
         .join(Invoice, Invoice.run_id == RunStage.run_id)
-        .where(Invoice.is_seed.is_(False))
+        .where(Invoice.is_seed.is_(False), Invoice.status != SPLIT)
     ).all()
     stage2_calls: dict[str, int] = {}
     for run_id, order, ms, details in stages:

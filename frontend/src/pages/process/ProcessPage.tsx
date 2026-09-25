@@ -21,6 +21,7 @@ import { narrate } from "./narration"
 import { PdfPreview } from "./PdfPreview"
 import { PoBalance } from "./PoBalance"
 import { sampleName } from "./samples"
+import { SplitCard } from "./SplitCard"
 import { Timeline } from "./Timeline"
 import { TourSlot } from "./TourCard"
 import { useRunStream } from "./useRunStream"
@@ -42,6 +43,8 @@ export function ProcessPage() {
     queryKey: ["run", runId],
     queryFn: () => getRun(runId!),
     enabled: !!runId && settled,
+    // A split file (1.6): follow its invoices until each has its decision.
+    refetchInterval: (q) => (q.state.data?.split_children?.some((c) => c.status === "running") ? 1000 : false),
   })
   const run = detail.data
   // Which run this one replaces (known from the start) or was replaced by, shown while it still streams.
@@ -70,7 +73,9 @@ export function ProcessPage() {
   const decision = stream.decision ?? run?.decision ?? null
   const running = start.isPending || (!!runId && !settled)
   const heldForReview = !running && decision?.decision === "Hold" && (run?.status ?? decision.status) === "needs_review"
-  const mood: MascotState = running ? "thinking" : decision?.decision ? MOOD[decision.decision] : "idle"
+  const splitItems = run?.split_children ?? null
+  const splitRunning = !!splitItems?.some((c) => c.status === "running")
+  const mood: MascotState = running || splitRunning ? "thinking" : decision?.decision ? MOOD[decision.decision] : "idle"
   const activeFile = runId
     ? (lineage?.file_name ?? (pending?.runId === runId ? pending.label : null))
     : start.isPending ? (pending?.label ?? null) : null
@@ -122,7 +127,15 @@ export function ProcessPage() {
       </div>
       <div className="flex flex-col gap-3">
         <PixelMascot state={mood} size={72} />
-        <SpeechBubble text={runId || start.isPending ? narrate(stages, decision, running) : narrate([], null, false)} />
+        <SpeechBubble
+          text={
+            splitItems
+              ? splitRunning
+                ? `This file holds ${splitItems.length} invoices. I'm checking each on its own, in page order…`
+                : `This file held ${splitItems.length} invoices. Each has its own decision below.`
+              : runId || start.isPending ? narrate(stages, decision, running) : narrate([], null, false)
+          }
+        />
       </div>
       <nav aria-label="Sample invoices" className="flex flex-col gap-2.5">
         <p className="label mb-1">Try a sample</p>
@@ -209,9 +222,10 @@ export function ProcessPage() {
             </div>
 
             {lineage && (
-              <RunLinks parent={lineage.parent_upload_id} child={lineage.replaced_by}
+              <RunLinks parent={lineage.parent_upload_id} child={lineage.replaced_by} splitFrom={lineage.split_from}
                 to={(id) => `/process?run=${encodeURIComponent(id)}`} />
             )}
+            {splitItems && <SplitCard items={splitItems} />}
             {notFound && <p role="alert" className="text-hold">There's no run called {runId}.</p>}
             {decision && <DecisionCard decision={decision} fraudFinding={fraudFinding} />}
             <Timeline stages={stages} running={running} />
@@ -219,7 +233,7 @@ export function ProcessPage() {
             {run?.po && (
               <PoBalance po={run.po} invoicePaise={decision?.total_paise ?? null} approved={decision?.decision === "Approve"} />
             )}
-            {run && <AlertGroups run={run} />}
+            {run && !splitItems && <AlertGroups run={run} />}
             {run?.has_file && <PdfPreview runId={run.run_id} fileName={run.file_name} />}
           </motion.div>
         )}

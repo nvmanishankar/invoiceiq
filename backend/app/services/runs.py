@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import date, datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import BACKEND_DIR, settings
@@ -12,7 +12,16 @@ from app.db import SessionLocal
 from app.models import Invoice, RunStage, utcnow
 from app.pipeline import decide
 from app.pipeline.context import SYSTEM_ERROR
-from app.pipeline.runner import DECISION_ORDER, create_run, load_run, new_run_id, resume_context, run_pipeline
+from app.pipeline.runner import (
+    DECISION_ORDER,
+    SPLIT_RESUME_AT,
+    create_run,
+    load_run,
+    new_run_id,
+    resume_context,
+    run_pipeline,
+)
+from app.pipeline.split import SPLIT
 from app.services import review
 
 log = logging.getLogger(__name__)
@@ -53,10 +62,12 @@ def samples() -> list[dict]:
 
 
 def runs_today(db: Session) -> int:
-    """Non-seed runs created since midnight UTC."""
+    """Non-seed runs created since midnight UTC. The invoices split out of one file count once, as that upload."""
     midnight = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    split_parents = select(Invoice.run_id).where(Invoice.status == SPLIT)
     return db.scalar(select(func.count()).select_from(Invoice).where(
-        Invoice.is_seed.is_(False), Invoice.created_at >= midnight))
+        Invoice.is_seed.is_(False), Invoice.created_at >= midnight,
+        or_(Invoice.parent_upload_id.is_(None), Invoice.parent_upload_id.not_in(split_parents))))
 
 
 def _check_cap(db: Session) -> None:
@@ -97,17 +108,25 @@ def create_corrected_run(db: Session, parent: Invoice, file_bytes: bytes, file_n
 
 
 def execute_run(run_id: str) -> None:
-    """Background task: its own session, never the request's. Never leaves a run stuck on 'running'."""
+    """Background task: its own session, never the request's. Never leaves a run stuck on 'running'.
+    A file with several invoices (1.6) ends split; its children are then checked here, one after another in page
+    order, each from stage 3 as after a review."""
+    children: list[str] = []
     with SessionLocal() as db:
         try:
-            run_pipeline(load_run(db, run_id, today=today()))
+            children = run_pipeline(load_run(db, run_id, today=today())).children
         except Exception:
             log.exception("run %s failed outside the stages", run_id)
             db.rollback()
             fail_run(db, run_id, "The system stopped while checking this invoice, so a person needs to review it.")
+    for child_id in children:
+        resume_run(child_id, SPLIT_RESUME_AT, "The system stopped while checking this invoice, so a person needs to "
+                                              "review it.")
 
 
-def resume_run(run_id: str, start_at: int) -> None:
+def resume_run(run_id: str, start_at: int,
+               failure: str = "The system stopped while re-checking this invoice after review, so a person needs to "
+                              "review it again.") -> None:
     """Background task after a review: run the stages from `start_at` again, then decide. Same safety as execute_run."""
     with SessionLocal() as db:
         try:
@@ -115,8 +134,7 @@ def resume_run(run_id: str, start_at: int) -> None:
         except Exception:
             log.exception("resuming run %s failed outside the stages", run_id)
             db.rollback()
-            fail_run(db, run_id, "The system stopped while re-checking this invoice after review, so a person "
-                                 "needs to review it again.")
+            fail_run(db, run_id, failure)
 
 
 def fail_run(db: Session, run_id: str, message: str) -> None:

@@ -70,9 +70,11 @@ CASES = [
        "Reject", ["Vendor"], sample=S07, runs_in=2),
     _c("1.5", "Credit note", "The AI says the document is a credit note: money owed back, not a bill to pay.",
        "Hold", ["AP"], runs_in=2),
-    _c("1.6", "Several invoices in one PDF", "The file holds more than one invoice with clear page boundaries.",
-       "Hold", ["AP"], runs_in=2,
-       note="Splitting into separate runs isn't built yet: the run holds and a person splits the file."),
+    _c("1.6", "Several invoices in one PDF", "The file holds more than one invoice, and each one's pages are known: "
+       "from the AI's page ranges, or (text PDFs) each invoice number printed on its own page.",
+       "Info", ["Finance", "AP"], also="Hold", runs_in=2, fraud=True,
+       note="Each invoice becomes its own run, checked on its own in page order. If one has a fraud warning (4.6, "
+            "4.7), the others that would pass are held for Finance too."),
     _c("1.7", "Unclear invoice boundaries", "The file seems to hold several invoices, but not where one ends.",
        "Hold", ["Vendor"], runs_in=2),
     # 2 Extract fields

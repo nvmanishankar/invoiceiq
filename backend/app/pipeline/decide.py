@@ -72,6 +72,12 @@ def save_decision(ctx: RunContext, decision: str, why: list[dict]) -> None:
 
 def run(ctx: RunContext) -> StageResult:
     decision = decide(ctx.findings)
+    if decision == "Approve" and ctx.sibling_fraud:
+        # Case 1.6: invoices that arrived in one file with a fraud warning aren't paid until Finance verifies them all.
+        ctx.add("1.6", "hold", f"Another invoice in the same file has a fraud warning ({', '.join(ctx.sibling_fraud)}); "
+                               "Finance must verify both.", ["Finance", "AP"], {"siblings": ctx.sibling_fraud},
+                fraud=True)
+        decision = decide(ctx.findings)
     ctx.decision = decision
     why = reasons(ctx.findings, decision)
     audiences = alert_audiences(ctx.findings)

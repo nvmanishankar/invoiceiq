@@ -24,7 +24,7 @@ from app.config import settings  # noqa: E402
 from app.models import Alert  # noqa: E402
 
 from app.db import SessionLocal, init_db, make_engine  # noqa: E402
-from app.pipeline.runner import create_run, run_pipeline  # noqa: E402
+from app.pipeline.runner import create_run, run_children, run_pipeline  # noqa: E402
 from app.seed import reset, seed_if_empty  # noqa: E402
 
 ICONS = {"pass": "✔", "warn": "!", "fail": "✘", "info": "i"}
@@ -38,6 +38,16 @@ def run_file(path: Path, db: Session, show_fields: bool) -> None:
     print(f"\n{path.name}")
     ctx = create_run(db, path.read_bytes(), path.name)
     run_pipeline(ctx, min_stage_ms=0, on_stage=print_stage)
+    if ctx.children:  # several invoices in one file (1.6): each child is checked on its own, in page order
+        print(f"      Split into {len(ctx.children)} invoices · LLM calls this run: {ctx.llm_calls}")
+        for child in run_children(db, ctx.children, min_stage_ms=0):
+            print(f"\n  {child.run_id} ({child.file_name})")
+            print_result(child, db, show_fields)
+        return
+    print_result(ctx, db, show_fields)
+
+
+def print_result(ctx, db: Session, show_fields: bool) -> None:
     for f in ctx.findings:
         to = ", ".join(f.audience) or "—"
         print(f"      [{f.label} {f.severity}] {f.message}  (to: {to})")

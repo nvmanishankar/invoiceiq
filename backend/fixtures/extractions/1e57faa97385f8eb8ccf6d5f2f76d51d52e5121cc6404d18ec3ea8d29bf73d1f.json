@@ -1,0 +1,90 @@
+{
+  "file_hash": "1e57faa97385f8eb8ccf6d5f2f76d51d52e5121cc6404d18ec3ea8d29bf73d1f",
+  "source": "two_invoices.pdf (tests/data)",
+  "model": "hand-made",
+  "extracted_at": "2026-09-25T00:00:00+00:00",
+  "extraction": {
+    "doc_type": "invoice",
+    "invoices": [
+      {
+        "page_range": [
+          1
+        ],
+        "vendor_name": "Acme Supplies Private Limited",
+        "vendor_gstin": "36AABCA1234F1ZA",
+        "invoice_number": "ACME/2026/0417",
+        "invoice_date": "2026-09-18",
+        "po_reference": "PO-2026-101",
+        "currency": "INR",
+        "lines": [
+          {
+            "description": "A4 copier paper 75gsm (ream of 500 sheets)",
+            "hsn": "4802",
+            "qty": 500.0,
+            "unit": "ream",
+            "unit_price": 200.0,
+            "tax_rate": 18.0,
+            "amount": 100000.0
+          }
+        ],
+        "subtotal": 100000.0,
+        "cgst": 9000.0,
+        "sgst": 9000.0,
+        "igst": null,
+        "total": 118000.0,
+        "tax_inclusive": false,
+        "bank_account": "50100234564521",
+        "ifsc": "HDFC0001234",
+        "payment_terms_days": 30,
+        "confidence": {
+          "invoice_number": "high",
+          "invoice_date": "high",
+          "total": "high",
+          "vendor_gstin": "high",
+          "bank_account": "high",
+          "po_reference": "high"
+        }
+      },
+      {
+        "page_range": [
+          2
+        ],
+        "vendor_name": "Deccan Office Interiors",
+        "vendor_gstin": "36AAKFD3456Q1ZT",
+        "invoice_number": "DOI/2026-27/0171",
+        "invoice_date": "2026-09-21",
+        "po_reference": "PO-2026-110",
+        "currency": "INR",
+        "lines": [
+          {
+            "description": "Conference table 8-seater",
+            "hsn": "9403",
+            "qty": 2.0,
+            "unit": "pcs",
+            "unit_price": 35000.0,
+            "tax_rate": 18.0,
+            "amount": 70000.0
+          }
+        ],
+        "subtotal": 70000.0,
+        "cgst": 6300.0,
+        "sgst": 6300.0,
+        "igst": null,
+        "total": 82600.0,
+        "tax_inclusive": false,
+        "bank_account": "61234567890123",
+        "ifsc": "ICIC0001122",
+        "payment_terms_days": 30,
+        "confidence": {
+          "invoice_number": "high",
+          "invoice_date": "high",
+          "total": "high",
+          "vendor_gstin": "high",
+          "bank_account": "high",
+          "po_reference": "high"
+        }
+      }
+    ],
+    "boundaries_clear": true
+  }
+}

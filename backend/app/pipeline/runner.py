@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import logging
 import time
 import uuid
 from collections.abc import Callable
@@ -23,9 +24,14 @@ from app.pipeline import (
     s7_duplicates,
     s8_tax,
     s9_dates,
+    split,
 )
 from app.pipeline.context import SYSTEM_ERROR, Finding, RunContext, StageResult
+from app.schemas import ExtractedInvoice
 from app.services.matching import needed_pairs, pair_lines, similarity_table
+from app.utils.money import format_inr
+
+log = logging.getLogger(__name__)
 
 STAGES: list[tuple[str, Callable[[RunContext], StageResult]]] = [
     ("Read document", s1_read.run),
@@ -41,6 +47,7 @@ STAGES: list[tuple[str, Callable[[RunContext], StageResult]]] = [
 HALTING_STAGES = 2  # only stages 1-2 may stop the run: later stages have nothing to check
 DECISION = ("Decision", decide.run)
 DECISION_ORDER = len(STAGES) + 1
+SPLIT_RESUME_AT = HALTING_STAGES  # a split child has stages 1-2 written for it; 3 onwards runs as for a review
 
 
 def file_hash(data: bytes) -> str:
@@ -108,6 +115,9 @@ def resume_context(db: Session, run_id: str, start_at: int, today: date | None =
     ctx.findings = [stored_finding(f) for s in kept for f in (s.details or {}).get("findings", [])]
     ctx.page_count = by_order.get(1, {}).get("pages", 0)
     ctx.is_scan = bool(by_order.get(1, {}).get("scanned"))
+    if by_order.get(1, {}).get("split_from"):
+        ctx.offline = True  # a split child makes no LLM calls: cached answers, else text matching
+        ctx.sibling_fraud = split.sibling_fraud(db, run_id)
     ctx.doc_type = row.doc_type
     ctx.extraction = row.extraction
     # LLM budget: what this run already used, so a resume can't take it past the per-run cap.
@@ -140,19 +150,106 @@ def finding_dict(f: Finding) -> dict:
     return d
 
 
-def save_stage(ctx: RunContext, order: int, name: str, result: StageResult, t0: float,
-               findings: list[Finding] = ()) -> None:
+def stage_row(run_id: str, order: int, name: str, result: StageResult, t0: float,
+              findings: list[Finding] = ()) -> RunStage:
     """One run_stages row; the findings this stage raised go in details["findings"]."""
-    ctx.db.add(RunStage(
-        run_id=ctx.run_id,
+    return RunStage(
+        run_id=run_id,
         stage_order=order,
         stage_name=clip(RunStage, "stage_name", name),
         status=result.status,
         message=result.message,
         details={**result.details, "findings": [finding_dict(f) for f in findings]},
         duration_ms=int((time.monotonic() - t0) * 1000),
-    ))
+    )
+
+
+def save_stage(ctx: RunContext, order: int, name: str, result: StageResult, t0: float,
+               findings: list[Finding] = ()) -> None:
+    ctx.db.add(stage_row(ctx.run_id, order, name, result, t0, findings))
     ctx.db.commit()
+
+
+# --- Case 1.6: several invoices in one file ---------------------------------------------------------------------
+
+def _child_name(file_name: str | None, pages: list[int]) -> str:
+    stem = (file_name or "upload.pdf").rsplit(".", 1)[0]
+    return f"{stem}_p{pages[0]}.pdf" if len(pages) == 1 else f"{stem}_p{pages[0]}-{pages[-1]}.pdf"
+
+
+def _add_child(ctx: RunContext, inv: ExtractedInvoice, pages: list[int], part: int, parts: int) -> str:
+    """One child run for one invoice of a split file: its own PDF of just its pages, its invoice row filled from
+    that invoice's extraction, and stages 1-2 written as done. Added to the session, not committed."""
+    t0 = time.monotonic()
+    data = split.cut_pages(ctx.file_bytes, pages, ctx.file_hash)
+    child = RunContext(run_id=new_run_id(), file_bytes=data, file_hash=file_hash(data), company=ctx.company,
+                       db=ctx.db, file_name=_child_name(ctx.file_name, pages), today=ctx.today, doc_type="invoice")
+    row = Invoice(run_id=child.run_id, parent_upload_id=ctx.run_id, file_name=clip(Invoice, "file_name", child.file_name),
+                  file_hash=child.file_hash, status="running")
+    ctx.db.add(row)
+    ctx.db.add(RunFile(run_id=child.run_id, file_name=clip(RunFile, "file_name", child.file_name), size=len(data),
+                       data=data))
+    origin = f"Split from {ctx.run_id}, {split.pages_label(pages)} of {ctx.page_count}"
+
+    if ctx.is_scan:
+        child.add("1.2", "info", "This is a scanned image, so it was read visually.", [])
+    read = StageResult("pass", origin, {"pages": len(pages), "scanned": ctx.is_scan, "split_from": ctx.run_id,
+                                        "source_pages": pages, "source_page_count": ctx.page_count,
+                                        "part": part, "parts": parts})
+    ctx.db.add(stage_row(child.run_id, 1, STAGES[0][0], read, t0, child.findings))
+
+    seen = len(child.findings)
+    low = s2_extract.prepare_invoice(child, inv)
+    child.extraction = inv.model_dump(mode="json")
+    s2_extract.write_invoice_row(row, "invoice", child.extraction, inv)
+    msg = f"{origin}: {len(inv.lines)} line(s), total {format_inr(row.total_paise)}"
+    if low:
+        msg += f"; low confidence: {', '.join(low)}"
+    fields = StageResult("warn" if low else "pass", msg, {"fields": child.extraction, "llm_calls": 0,
+                                                            "split_from": ctx.run_id})
+    ctx.db.add(stage_row(child.run_id, 2, STAGES[1][0], fields, t0, child.findings[seen:]))
+    return child.run_id
+
+
+def _finish_split(ctx: RunContext, min_ms: int, on_stage) -> RunContext:
+    """The parent of a split file: create the children in one commit, then close the parent as 'split' with a
+    Decision stage naming them. The parent has no decision; each child gets its own when run_children checks it."""
+    t0 = time.monotonic()
+    parts = ctx.split_parts
+    try:
+        ids = [_add_child(ctx, inv, pages, i, len(parts)) for i, (inv, pages) in enumerate(parts, start=1)]
+        row = ctx.db.get(Invoice, ctx.run_id)
+        row.doc_type = "invoice"
+        ctx.db.commit()
+    except Exception as e:  # never crash the run: without its children the file is held for a person
+        ctx.db.rollback()
+        log.exception("splitting run %s failed", ctx.run_id)
+        ctx.split_parts = None
+        ctx.add(SYSTEM_ERROR, "hold", "System error: this file holds several invoices and splitting it failed, so "
+                                      "a person needs to review it.", ["AP"], {"error": f"{type(e).__name__}: {e}"})
+        return None
+    ctx.children = ids
+    result = StageResult("info", f"Split into {len(ids)} invoices: {', '.join(ids)}", {
+        "decision": None,
+        "status": split.SPLIT,
+        "children": [{"run_id": rid, "pages": pages} for rid, (_, pages) in zip(ids, parts)],
+        "llm_calls": ctx.llm_calls,
+    })
+    pad_to_min_duration(t0, min_ms)
+    save_stage(ctx, DECISION_ORDER, DECISION[0], result, t0)
+    if on_stage:
+        on_stage(DECISION_ORDER, DECISION[0], result)
+    row.status, row.decision, row.finished_at = split.SPLIT, None, utcnow()  # together: the stream ends on this
+    ctx.db.commit()
+    return ctx
+
+
+def run_children(db: Session, run_ids: list[str], today: date | None = None, min_stage_ms: int | None = None,
+                 on_stage: Callable[[int, str, StageResult], None] | None = None) -> list[RunContext]:
+    """Check a split file's children from stage 3, one after another in page order (never in parallel), so each
+    sees the PO balances its earlier siblings left."""
+    return [run_pipeline(resume_context(db, rid, SPLIT_RESUME_AT, today), start_at=SPLIT_RESUME_AT,
+                         min_stage_ms=min_stage_ms, on_stage=on_stage) for rid in run_ids]
 
 
 def _run_stage(ctx: RunContext, name: str, fn: Callable[[RunContext], StageResult]) -> StageResult:
@@ -188,6 +285,8 @@ def run_pipeline(
 
     t0 = time.monotonic()
     seen = len(ctx.findings)
+    if ctx.split_parts and _finish_split(ctx, min_ms, on_stage) is not None:
+        return ctx
     name, fn = DECISION
     result = _run_stage(ctx, name, fn)
     if ctx.decision is None:  # the decision step itself failed: the sys finding makes it a Hold

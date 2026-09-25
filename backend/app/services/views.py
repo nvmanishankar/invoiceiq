@@ -8,6 +8,7 @@ from app.models import Alert, Invoice, PurchaseOrder, Review, RunFile, RunStage
 from app.pipeline.context import Finding
 from app.pipeline.decide import alert_audiences
 from app.pipeline.runner import DECISION_ORDER
+from app.pipeline.split import SPLIT, split_origin
 from app.services.po import invoiced_qty, po_invoiced_paise, po_total_paise
 from app.utils.money import format_inr
 from app.utils.timefmt import iso as _iso
@@ -202,6 +203,17 @@ def comparison(invoice_lines: list[dict], po: dict | None) -> list[dict]:
     return rows
 
 
+def split_children(db: Session, inv: Invoice) -> list[dict] | None:
+    """A split file's invoices in page order, each with its status and decision; None for any other run."""
+    if inv.status != SPLIT:
+        return None
+    children = []
+    for child in db.scalars(select(Invoice).where(Invoice.parent_upload_id == inv.run_id)):
+        origin = split_origin(db, child.run_id) or {}
+        children.append({**run_summary(child), "pages": origin.get("pages") or [], "part": origin.get("part")})
+    return sorted(children, key=lambda c: (c["pages"] or [0])[0])
+
+
 def run_detail(db: Session, inv: Invoice) -> dict:
     stages = _stages(db, inv.run_id)
     findings = findings_of(stages)
@@ -261,6 +273,9 @@ def run_detail(db: Session, inv: Invoice) -> dict:
         "po": po,
         "comparison": comparison(lines, po),
         "has_file": db.scalar(select(RunFile.run_id).where(RunFile.run_id == inv.run_id)) is not None,
-        "replaced_by": db.scalar(select(Invoice.run_id).where(Invoice.parent_upload_id == inv.run_id)
-                                 .order_by(Invoice.created_at.desc()).limit(1)),
+        "replaced_by": None if inv.status == SPLIT else db.scalar(
+            select(Invoice.run_id).where(Invoice.parent_upload_id == inv.run_id)
+            .order_by(Invoice.created_at.desc()).limit(1)),
+        "split_children": split_children(db, inv),
+        "split_from": split_origin(db, inv.run_id),
     }

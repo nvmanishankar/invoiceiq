@@ -3,7 +3,8 @@
 EXTRACTION_PROMPT = """You extract data from vendor documents for an accounts payable team in India.
 Return JSON that matches the schema exactly. Rules:
 1. First classify doc_type. If it is not an invoice, still return what you can read.
-2. If the file contains more than one invoice, return one entry per invoice with its page_range.
+2. If the file contains more than one invoice, return one entry per invoice with its page_range:
+   the 1-based pages it is printed on, as [page] or [first_page, last_page].
    Set boundaries_clear=false if you are unsure where one ends.
 3. Copy values exactly as printed. Never calculate, guess or fill in a missing value: use null.
 4. po_reference: any purchase order reference anywhere on the page (header, notes, line text),

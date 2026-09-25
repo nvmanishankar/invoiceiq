@@ -4,6 +4,7 @@ from datetime import date
 
 from app import llm
 from app.models import Invoice, InvoiceLine, clip
+from app.pipeline import split
 from app.pipeline.context import RunContext, StageResult
 from app.schemas import ExtractedInvoice
 from app.utils.money import format_inr, rupees_to_paise
@@ -81,6 +82,17 @@ def write_invoice_row(row: Invoice, doc_type: str | None, extraction: dict | Non
     ]
 
 
+def prepare_invoice(ctx: RunContext, inv: ExtractedInvoice) -> list[str]:
+    """One extracted invoice made ready for the checks; returns the fields read with low confidence (2.2)."""
+    inv.currency = normalise_currency(inv.currency)  # 'Rs.', '₹', 'INR' → 'INR'
+    if inv.tax_inclusive:
+        back_calculate_tax(ctx, inv)
+    low = [FIELD_LABELS[f] for f, c in inv.confidence.model_dump().items() if c == "low"]
+    if low:
+        ctx.add("2.2", "hold", f"Couldn't read the {', '.join(low)} reliably; please confirm.", ["AP"], {"fields": low})
+    return low
+
+
 def run(ctx: RunContext) -> StageResult:
     ex = llm.extract(ctx.file_bytes, ctx.file_hash, ctx.text, source=ctx.file_name, ctx=ctx)
     if ex is None:
@@ -108,23 +120,23 @@ def run(ctx: RunContext) -> StageResult:
 
     if len(ex.invoices) > 1:
         ctx.halt = True
-        pages = [i.page_range for i in ex.invoices]
-        if not ex.boundaries_clear:
+        n = len(ex.invoices)
+        ranges = [i.page_range for i in ex.invoices]
+        parts = split.assign_pages(ex.invoices, ctx.page_count, ctx.page_texts, ex.boundaries_clear)
+        if parts is None:
             ctx.add("1.7", "hold", "This file seems to contain several invoices. Please send each as a separate PDF.",
-                    ["Vendor"], {"count": len(ex.invoices), "page_ranges": pages})
-            return StageResult("warn", "Several invoices, unclear boundaries", {"count": len(ex.invoices)})
-        # Splitting into child runs is a stretch goal; until then a person splits the file.
-        ctx.add("1.6", "hold", f"This file contains {len(ex.invoices)} separate invoices. Each needs its own run.",
-                ["AP"], {"count": len(ex.invoices), "page_ranges": pages})
-        return StageResult("info", f"{len(ex.invoices)} invoices in one file", {"count": len(ex.invoices), "page_ranges": pages})
+                    ["Vendor"], {"count": n, "page_ranges": ranges})
+            return StageResult("warn", "Several invoices, unclear boundaries", {"count": n, "page_ranges": ranges,
+                                                                                 "llm_calls": ctx.llm_calls})
+        # Case 1.6: each invoice becomes its own run, in page order; the runner creates them after this stage.
+        ctx.split_parts = sorted(zip(ex.invoices, parts), key=lambda p: p[1][0])
+        pages = [pp for _, pp in ctx.split_parts]
+        return StageResult("info", f"{n} invoices in one file ({', '.join(split.pages_label(p) for p in pages)}); "
+                                   "each is checked on its own",
+                           {"count": n, "page_ranges": ranges, "pages": pages, "llm_calls": ctx.llm_calls})
 
     inv = ex.invoices[0]
-    inv.currency = normalise_currency(inv.currency)  # 'Rs.', '₹', 'INR' → 'INR'
-    if inv.tax_inclusive:
-        back_calculate_tax(ctx, inv)
-    low = [FIELD_LABELS[f] for f, c in inv.confidence.model_dump().items() if c == "low"]
-    if low:
-        ctx.add("2.2", "hold", f"Couldn't read the {', '.join(low)} reliably; please confirm.", ["AP"], {"fields": low})
+    low = prepare_invoice(ctx, inv)
     ctx.extraction = inv.model_dump(mode="json")
     save_invoice_fields(ctx, inv)
 

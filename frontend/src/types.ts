@@ -115,9 +115,17 @@ export type RunDetail = {
   has_file: boolean
   parent_upload_id: string | null
   replaced_by: string | null
+  /** A file with several invoices (case 1.6): its child runs in page order, with their live status. */
+  split_children: SplitChild[] | null
+  /** A child run: the file it was split from and its pages there. */
+  split_from: SplitOrigin | null
   /** When it was last sent back to the vendor; null unless it's waiting on them. */
   waiting_since: string | null
 }
+
+export type SplitChild = RunSummary & { pages: number[]; part: number | null }
+
+export type SplitOrigin = { run_id: string; pages: number[]; page_count: number | null; part: number | null; parts: number | null }
 
 export type AlertStatus = "Drafted" | "Sent" | "Failed"
 

@@ -154,7 +154,7 @@ function ReviewDetail({ run, onDone }: { run: RunDetail; onDone: (runId: string)
         <PillButton asChild variant="secondary" className="ml-auto">
           <Link to={`/process?run=${encodeURIComponent(run.run_id)}`}>Open in Process</Link>
         </PillButton>
-        <RunLinks parent={run.parent_upload_id} child={run.replaced_by} to={(id) => `/review/${encodeURIComponent(id)}`} />
+        <RunLinks parent={run.parent_upload_id} child={run.replaced_by} splitFrom={run.split_from} to={(id) => `/review/${encodeURIComponent(id)}`} />
       </div>
 
       {!open && (
