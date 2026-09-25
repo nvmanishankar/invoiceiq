@@ -2,6 +2,7 @@ import type {
   AlertRow,
   AppSettings,
   Catalogue,
+  HowFacts,
   PoInput,
   PoRow,
   PoWalkthrough,
@@ -18,6 +19,7 @@ import type {
   SuiteRun,
   TaxRate,
   VendorInput,
+  VendorLoop,
   VendorRow,
 } from "@/types"
 
@@ -162,4 +164,6 @@ export const runTestSuite = () => postJson<SuiteRun>("/api/admin/test-suite")
 // --- How it works: read-only explainer data, straight from the code.
 export const getCatalogue = () => getJson<Catalogue>("/api/how-it-works/cases")
 export const getPoWalkthrough = () => getJson<PoWalkthrough>("/api/how-it-works/po-walkthrough")
+export const getVendorLoop = () => getJson<VendorLoop>("/api/how-it-works/vendor-loop")
+export const getHowFacts = () => getJson<HowFacts>("/api/how-it-works/facts")
 export const getTaxHistory = () => getJson<TaxRate[]>("/api/how-it-works/tax-rates")

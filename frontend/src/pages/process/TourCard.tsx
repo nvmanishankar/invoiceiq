@@ -175,6 +175,12 @@ function TourCard({ sampleFile, onRun, disabled, headingRef }: CardProps & { hea
       <p className="border-t border-line pt-4 text-[14px] leading-snug text-ink-2">
         Switch the role at the top (Procurement, AP clerk, Finance) to see who can do what.
       </p>
+      <p className="mt-3 text-[14px] leading-snug text-ink-2">
+        Want the full story?{" "}
+        <PillButton asChild variant="link" className="text-[13px]">
+          <Link to="/how-it-works">How it works</Link>
+        </PillButton>
+      </p>
     </section>
   )
 }

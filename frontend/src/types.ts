@@ -518,3 +518,51 @@ export type PoWalkthrough = {
   stage_message: string
   rules: Catalogue["rules"]
 }
+
+/** GET /api/how-it-works/facts: who may do what, and the limits part B quotes. */
+export type PermissionRule = "anyone" | "procurement" | "finance"
+export type Permission = {
+  key: string
+  area: string
+  action: string
+  rule: PermissionRule
+  /** What changes on an invoice with a fraud finding: only Finance, or nobody. */
+  fraud?: "finance" | "nobody"
+  why: string
+  fraud_why?: string
+  where: string
+}
+
+export type HowFacts = {
+  permissions: Permission[]
+  roles: string[]
+  resume: { confirm: number; pick_po: number }
+  token_days: number
+  max_runs_per_day: number
+  /** The live view holds each step at least this long so it can be watched. */
+  min_stage_ms: number
+  max_llm_calls: number
+  max_upload_mb: number
+  minutes_saved_per_invoice: number
+  top_reasons: number
+  msme_max_terms_days: number
+  max_terms_days: number
+  first_new_po: number
+  max_tolerance_pct: number
+  max_tolerance_cap_paise: number
+  suite_cooldown_seconds: number
+  tests: { samples: number; automated: number }
+}
+
+/** GET /api/how-it-works/vendor-loop: sample 04 held, run on a scratch copy. */
+export type VendorLoop = {
+  sample: string
+  run_id: string
+  decision: Decision
+  findings: { code: string; severity: string; message: string; audience: Audience[] }[]
+  email: { subject: string; body: string; intended_for: string; reasons: VendorReason[]; note: string }
+  response_page: VendorResponsePage | null
+  total_paise: number
+  remaining_paise: number | null
+  protected: { category: string; paise: number; display: string } | null
+}
