@@ -22,7 +22,7 @@ import { PdfPreview } from "./PdfPreview"
 import { PoBalance } from "./PoBalance"
 import { sampleName } from "./samples"
 import { Timeline } from "./Timeline"
-import { TourCard } from "./TourCard"
+import { TourSlot } from "./TourCard"
 import { useRunStream } from "./useRunStream"
 
 const MOOD: Record<Decision, MascotState> = { Approve: "approved", Hold: "hold", Reject: "reject" }
@@ -162,9 +162,7 @@ export function ProcessPage() {
             transition={{ duration: reduce ? 0 : 0.25 }}
             className="flex flex-col gap-6"
           >
-            {!tourState.dismissed && (
-              <TourCard sampleFile={sampleFile} onRun={(f) => begin({ sample_name: f }, f)} disabled={running} />
-            )}
+            <TourSlot sampleFile={sampleFile} onRun={(f) => begin({ sample_name: f }, f)} disabled={running} />
             <Dropzone onFile={(f) => begin({ file: f }, f.name)} />
             <div className="overflow-hidden rounded-card bg-accent px-6 pt-4 pb-2">
               <DotMatrix text="InvoiceIQ" color="#ffffff" height={220} />
