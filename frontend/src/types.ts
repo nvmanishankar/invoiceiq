@@ -448,3 +448,73 @@ export type SuiteResult = {
 }
 
 export type SuiteRun = { passed: number; total: number; duration_ms: number; ran_at: string; results: SuiteResult[] }
+
+// --- How it works (GET /api/how-it-works/*) ---
+
+export type CaseOutcome = "Pass" | "Hold" | "Reject" | "Info"
+export type Audience = "Vendor" | "AP" | "Procurement" | "Finance"
+
+export type CatalogueCase = {
+  code: string
+  stage: number
+  title: string
+  trigger: string
+  outcome: CaseOutcome
+  also: CaseOutcome | null
+  alerted: Audience[]
+  status: "Built" | "Designed, not built yet"
+  sample: string | null
+  runs_in: number | null
+  finding: boolean
+  fraud: boolean
+  note: string | null
+}
+
+export type CatalogueStage = { n: number; name: string; ai: boolean; what: string }
+
+export type Catalogue = {
+  counts: { total: number; built: number; designed: number }
+  stages: CatalogueStage[]
+  cases: CatalogueCase[]
+  rules: {
+    po_match_min_score: number
+    po_match_min_gap: number
+    po_weights: { lines: number; amount: number; date: number }
+    max_llm_calls: number
+    maths_tolerance_paise: number
+  }
+}
+
+export type WalkPo = {
+  po_id: string
+  vendor: string
+  status: string
+  po_date: string
+  total_paise: number
+  remaining_paise: number
+  lines: { description: string; qty: number; unit_price_paise: number }[]
+}
+
+export type PoWalkthrough = {
+  sample: string
+  invoice: {
+    vendor: string | null
+    invoice_no: string | null
+    invoice_date: string | null
+    total_paise: number | null
+    po_reference: string | null
+    lines: { description: string; qty: number | null; unit_price_paise: number | null }[]
+  }
+  elimination: { po_id: string; eliminated_by: string | null; reason: string; po: WalkPo | null }[]
+  scores: { po_id: string; lines: number; amount: number; date: number; total: number }[]
+  top: string | null
+  gap: number | null
+  explanation: string | null
+  similarity_source: string | null
+  matched_po: string | null
+  match_type: string
+  match_confidence: string | null
+  decision: Decision | null
+  stage_message: string
+  rules: Catalogue["rules"]
+}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useEffectEvent, useRef, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
@@ -88,6 +88,18 @@ export function ProcessPage() {
       },
     })
   }
+  // "Try it" on the How it works page links here with ?sample=<file>: run it once, when the sample list arrives.
+  const trySample = params.get("sample")
+  const tried = useRef(false)
+  const runLinkedSample = useEffectEvent((file: string, known: boolean) => {
+    if (known) begin({ sample_name: file }, file)
+    else setParams({}, { replace: true })
+  })
+  useEffect(() => {
+    if (!trySample || tried.current || !samples.data) return
+    tried.current = true
+    runLinkedSample(trySample, samples.data.some((s) => s.file === trySample))
+  }, [trySample, samples.data])
   const reset = () => {
     setPending(null)
     start.reset()

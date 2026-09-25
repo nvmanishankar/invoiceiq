@@ -9,6 +9,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: "/vendors", label: "Vendors" },
   { to: "/outbox", label: "Outbox" },
   { to: "/tests", label: "Tests" },
+  { to: "/how-it-works", label: "How it works" },
 ]
 
 /** Under the small menu on the right. */

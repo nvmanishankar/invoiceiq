@@ -1,8 +1,10 @@
 import type {
   AlertRow,
   AppSettings,
+  Catalogue,
   PoInput,
   PoRow,
+  PoWalkthrough,
   ReviewAction,
   ReviewQueue,
   RunDetail,
@@ -156,3 +158,8 @@ export const resetDemo = () => postJson<{ ok: boolean; message: string }>("/api/
 
 /** Every sample on a scratch copy of the data: nothing live is touched and no email is sent. */
 export const runTestSuite = () => postJson<SuiteRun>("/api/admin/test-suite")
+
+// --- How it works: read-only explainer data, straight from the code.
+export const getCatalogue = () => getJson<Catalogue>("/api/how-it-works/cases")
+export const getPoWalkthrough = () => getJson<PoWalkthrough>("/api/how-it-works/po-walkthrough")
+export const getTaxHistory = () => getJson<TaxRate[]>("/api/how-it-works/tax-rates")

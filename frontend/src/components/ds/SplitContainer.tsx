@@ -7,7 +7,7 @@ export function SplitContainer({ rail, children, className }: { rail: ReactNode;
   return (
     <div
       className={cn(
-        "grid overflow-hidden rounded-container border border-line bg-surface lg:grid-cols-[320px_minmax(0,1fr)]",
+        "grid overflow-clip rounded-container border border-line bg-surface lg:grid-cols-[320px_minmax(0,1fr)]",
         className,
       )}
     >

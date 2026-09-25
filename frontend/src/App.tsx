@@ -17,6 +17,7 @@ import { RoleProvider } from "@/components/RoleProvider"
 
 // Recharts is heavy; only the dashboard needs it.
 const DashboardPage = lazy(() => import("@/pages/dashboard/DashboardPage").then((m) => ({ default: m.DashboardPage })))
+const HowItWorksPage = lazy(() => import("@/pages/how/HowItWorksPage").then((m) => ({ default: m.HowItWorksPage })))
 
 const BUILT: Record<string, ReactNode> = {
   "/process": <ProcessPage />,
@@ -26,6 +27,7 @@ const BUILT: Record<string, ReactNode> = {
   "/vendors": <VendorsPage />,
   "/outbox": <OutboxPage />,
   "/tests": <TestsPage />,
+  "/how-it-works": <Suspense fallback={null}><HowItWorksPage /></Suspense>,
   "/settings": <SettingsPage />,
   "/styleguide": <Styleguide />,
 }
