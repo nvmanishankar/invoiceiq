@@ -1,46 +1,60 @@
 # InvoiceIQ
 
-InvoiceIQ is an accounts-payable assistant built for the Zamp AI Solutions Associate case study (PS-1). Upload a vendor invoice PDF, text or scanned, and watch it move through nine checks live: an LLM reads the fields, then Python rules verify the vendor, match the purchase order, check amounts, duplicates, GST and payment terms, and end with an explainable **Approve / Hold / Reject** decision and routed email alerts.
+InvoiceIQ is an accounts-payable assistant built for the Zamp AI Solutions Associate case study (PS-1). You upload a vendor invoice PDF, text or scanned, and watch it go through nine checks live. An LLM reads the fields. Python rules then verify the vendor, match the purchase order, and check amounts, duplicates, GST and payment terms. Each invoice ends with an **Approve**, **Hold** or **Reject** decision that explains itself, and alerts go to the right people.
 
-**Live:** https://invoiceiq-kxv1.onrender.com — start with the tour on the **Process** page.
+**Live:** https://invoiceiq-kxv1.onrender.com
+**Start with the 3-minute tour on the Process page.** For the design in pictures, see [How it works](https://invoiceiq-kxv1.onrender.com/how-it-works).
 
 ## What it does
 
 **The 9 checks**
 
 1. **Read document:** text or scanned PDF; rejects quotations and non-invoices.
-2. **Extract fields:** vendor, invoice number, date, lines, tax, totals, bank, each with a confidence level.
-3. **Completeness and maths:** required fields present, not future-dated; lines, tax and totals add up.
-4. **Verify vendor:** known, active, not blocked; GSTIN and bank account match the vendor master.
-5. **Match PO:** explicit reference, or inferred by filtering and scoring the vendor's open POs.
-6. **Amounts and quantities:** within tolerance and within the PO's remaining balance and quantity.
+2. **Extract fields:** vendor, invoice number, date, lines, tax, totals and bank details, each with a confidence level.
+3. **Completeness and maths:** required fields are present and the date isn't in the future; lines, tax and totals add up.
+4. **Verify vendor:** known, active and not blocked; GSTIN and bank account match the vendor master.
+5. **Match PO:** uses the printed PO reference, or infers the PO by filtering and scoring the vendor's open POs.
+6. **Amounts and quantities:** within tolerance, and within the PO's remaining balance and quantity.
 7. **Duplicates:** catches resubmissions, even with a reformatted invoice number or a re-scan.
-8. **Tax:** GST rate valid for the date; CGST+SGST vs IGST split correct for the states involved.
-9. **Dates and terms:** invoice not too old; due date from PO terms, capped at 45 days for MSME vendors.
+8. **Tax:** GST rate valid for the date; CGST+SGST or IGST split correct for the states involved.
+9. **Dates and terms:** invoice not too old; due date from the PO terms, capped at 45 days for MSME vendors.
 
-**3 decisions:** any Reject → **Reject**; else any Hold → **Hold** (goes to the review queue); else **Approve** with payee, amount and due date.
+**3 decisions:** any Reject finding → **Reject**. Otherwise any Hold finding → **Hold**, which goes to the review queue. Otherwise → **Approve**, with payee, amount and due date.
 
-**Alert routing:** vendor mistakes go to the **vendor**; our-side problems (missing PO, blocked vendor) go to **Procurement**; fraud signals (changed bank account, GSTIN mismatch) go to **Finance** and AP. Fraud alerts are **never** emailed to the vendor, because the contact on the invoice may be the fraudster.
+**Alert routing:** vendor mistakes go to the **vendor**. Problems on our side, such as a missing PO or a blocked vendor, go to **Procurement**. Fraud signals, such as a changed bank account or a GSTIN mismatch, go to **Finance** and AP. Fraud alerts are **never** emailed to the vendor, because the contact on the invoice may be the fraudster.
 
-**Vendor response link:** a vendor email carries a secure, expiring link where the vendor uploads a corrected invoice. It re-runs automatically, linked to the original: held → vendor responded → approved.
+**Human review:** every Hold waits in a review queue with its evidence. A reviewer can correct fields, pick the right PO, override, reject, or send the invoice back to the vendor. Every action is logged with before and after values.
+
+**Vendor response link:** the email to a vendor carries a secure link that expires. On that page the vendor uploads a corrected invoice, which re-runs automatically and stays linked to the original: held → vendor responded → approved. AP can also upload a corrected invoice from the review page.
+
+**Multi-invoice PDFs:** one PDF holding several invoices is split into one run per invoice. Pages are assigned only on evidence, never guessed; if the pages can't be assigned with certainty, the file is held. If any invoice in the file carries a fraud signal, the other invoices from that file are held for Finance too. A tampered bank account on one page means nothing in that file can be trusted.
 
 ## Design principles
 
 - **AI reads, rules decide.** The LLM only extracts fields and scores text similarity. Every decision is a Python rule with a case code and evidence.
 - **At most 2 LLM calls per invoice**, cached by file hash, with a graceful fallback. An LLM error never crashes a run.
-- **Money in integer paise.** No floats; shown as ₹ with Indian grouping (₹1,18,000).
-- **Ambiguity always goes to a person.** Missing values stay null with a finding, never guessed. A wrong confident decision is worse than a Hold.
-- **Segregation of duties by role.** Procurement creates POs and vendors, AP processes invoices, only Finance can clear fraud Holds.
+- **Money in integer paise.** No floats; amounts show as ₹ with Indian grouping (₹1,18,000).
+- **Ambiguity always goes to a person.** Missing values stay null with a finding and are never guessed. A confident wrong decision is worse than a Hold.
+- **Segregation of duties by role.** Procurement creates POs and vendors, AP processes invoices, and only Finance can clear fraud Holds or change the tolerance.
+
+## Safeguards
+
+- **Grounding check:** on a text PDF, the invoice number, GSTIN, bank account and total the AI read must be printed in the document. A value that isn't found is held for a person to confirm.
+- **PO locked during approval:** the PO is locked while an approval commits, so two approvals can't both spend the same balance.
+- **Override past the PO balance** needs an explicit confirmation from the reviewer.
+- **Bank numbers masked** to the last 4 digits, except for Finance on an invoice held for fraud.
+- **Public vendor link rate-limited:** 5 requests per link and 20 per IP address per hour.
+- **Daily cap counts only AI runs:** only new files the AI has to read count towards `MAX_RUNS_PER_DAY`; cached samples and re-runs don't.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    R[React app] -->|upload, forms| F[FastAPI]
+    R[React app] --> F[FastAPI]
     F -->|live stage events| R
-    F --> P[Pipeline: 9 stages + decision]
-    P --> G[Gemini: extraction]
-    F --> DB[(Postgres)]
+    F --> P[Pipeline: 9 checks + decision]
+    P --> DB[(Postgres)]
+    P --> G[Gemini: reads the invoice]
     F --> E[Resend: email]
 ```
 
@@ -59,11 +73,11 @@ Full design: [docs/InvoiceIQ_Solution_Design_PS1.md](docs/InvoiceIQ_Solution_Des
 
 ## Assumptions
 
-- **India/GST first.** The buyer is in Hyderabad, Telangana; GST is fully validated. Other countries use tax rates declared on the PO.
-- **The Create PO form stands in for the ERP.** POs are never extracted from PDFs; reference data must be exact.
-- **Two-way match** (invoice vs PO); no goods receipts.
-- **Tolerance is ±2%, capped at ₹5,000.** Over tolerance is a Hold, not a Reject.
-- Only approved invoices consume a PO's balance.
+- **India/GST first.** The buyer is in Hyderabad, Telangana, and GST is fully validated. Other countries use the tax rates declared on the PO.
+- **The Create PO form stands in for the ERP.** POs are never extracted from PDFs, so reference data is exact.
+- **Two-way match:** invoice against PO; no goods receipts.
+- **Tolerance is ±2%, capped at ₹5,000.** Going over tolerance is a Hold, not a Reject.
+- **Roles are a selector for the demo**, not real logins (see Known limitations).
 
 ## The 10 samples
 
@@ -81,6 +95,11 @@ In `backend/samples/`; expected results in `backend/samples/expected.json`.
 | `08_extra_wrong_split_brighttech.pdf` | Inter-state vendor billing CGST+SGST instead of IGST | Hold |
 | `09_extra_missing_date_deccan.pdf` | No invoice date; demos the vendor response link | Hold |
 | `10_extra_blocked_quickfix.pdf` | Blocked vendor quoting a PO that doesn't exist | Reject |
+
+## Testing
+
+- **412 automated tests** (`pytest -q` from `backend/`), all offline: rules, money, GSTIN, PO matching and balances, extraction and grounding, alerts, review actions, the vendor link, PDF splitting, hardening and the API.
+- **In-app Tests page:** runs all 10 samples against a fresh copy of the seed data and shows expected against actual. The result is **10/10**. It never touches live runs, alerts, POs or the daily cap.
 
 ## Run locally
 
@@ -101,7 +120,7 @@ npm install
 npm run dev
 ```
 
-**.env keys:** `DATABASE_URL`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_MODEL_FALLBACK`, `RESEND_API_KEY`, `EMAIL_FROM`, `OWNER_EMAIL`, `BASE_URL`, `MAX_RUNS_PER_DAY`, `VENDOR_AUTO_SEND`, `SEND_EMAILS`, `MIN_STAGE_MS`. API keys are only needed for new PDFs and real emails. All emails go to `OWNER_EMAIL`; the intended recipient is stored.
+**.env keys:** `DATABASE_URL`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_MODEL_FALLBACK`, `RESEND_API_KEY`, `EMAIL_FROM`, `OWNER_EMAIL`, `BASE_URL`, `MAX_RUNS_PER_DAY`, `VENDOR_AUTO_SEND`, `SEND_EMAILS`, `MIN_STAGE_MS`. You only need the API keys for new PDFs and real emails. All emails go to `OWNER_EMAIL`, and the intended recipient is stored.
 
 **Tests**, from `backend/`:
 
@@ -127,7 +146,7 @@ This is a pilot. Each line is a gap today, then the fix.
 ## What I'd build next
 
 1. **Investigator agent on held invoices:** gathers evidence (vendor history, similar invoices, PO changes) and drafts a recommendation for the reviewer; rules still decide.
-2. **Inbound email parsing:** read invoices straight from the AP mailbox.
-3. **Scheduled reminders:** chase vendors and reviewers automatically when items sit waiting.
-4. **ERP connectors (SAP, Tally)** in place of the Create PO form.
-5. **More tax models:** UK VAT, US sales tax, or a tax engine behind the same interface.
+2. **Three-way match with goods received:** check what was invoiced against what arrived, not only against what was ordered.
+3. **Learning from reviewer decisions:** use how reviewers resolve Holds to tune matching and reduce repeat Holds, with every change still a visible rule.
+4. **Payment file:** export approved invoices as a bank payment file, paid on their due dates.
+5. **Invoices from the AP mailbox:** read invoices straight from inbound email instead of uploads.
