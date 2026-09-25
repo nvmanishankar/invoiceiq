@@ -26,8 +26,8 @@ export function ReliabilitySection({ facts }: { facts: HowFacts | undefined }) {
       then: <>On startup, any run still marked as checking is closed as a Hold with a note that the server restarted, so it reaches a person and its live view ends.</>,
     },
     {
-      when: "Too many invoices in a day",
-      then: <>The demo checks up to {facts?.max_runs_per_day ?? "…"} invoices a day. After that, uploads are refused with a message to try tomorrow, and a vendor using their link is asked to try again tomorrow or reply by email. The test suite doesn't count: it runs on a scratch copy.</>,
+      when: "Too many new invoices in a day",
+      then: <>The AI reads up to {facts?.max_runs_per_day ?? "…"} new invoices a day. After that, new files are refused with a message to try tomorrow, and a vendor using their link is asked to try again tomorrow or reply by email. Samples, files read before and the invoices split out of one file don't count, and neither does the test suite: it runs on a scratch copy.</>,
     },
   ]
   return (

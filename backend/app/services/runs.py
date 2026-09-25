@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import date, datetime, timezone
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import BACKEND_DIR, settings
@@ -16,12 +16,13 @@ from app.pipeline.runner import (
     DECISION_ORDER,
     SPLIT_RESUME_AT,
     create_run,
+    file_hash,
     load_run,
+    needs_llm,
     new_run_id,
     resume_context,
     run_pipeline,
 )
-from app.pipeline.split import SPLIT
 from app.services import review
 
 log = logging.getLogger(__name__)
@@ -62,26 +63,31 @@ def samples() -> list[dict]:
 
 
 def runs_today(db: Session) -> int:
-    """Non-seed runs created since midnight UTC. The invoices split out of one file count once, as that upload."""
+    """Runs since midnight UTC that needed the AI (a file with no cached reading). Samples, files read before, the
+    invoices split out of a file and the in-app test suite (its own scratch database) never count."""
     midnight = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    split_parents = select(Invoice.run_id).where(Invoice.status == SPLIT)
     return db.scalar(select(func.count()).select_from(Invoice).where(
-        Invoice.is_seed.is_(False), Invoice.created_at >= midnight,
-        or_(Invoice.parent_upload_id.is_(None), Invoice.parent_upload_id.not_in(split_parents))))
+        Invoice.is_seed.is_(False), Invoice.created_at >= midnight, Invoice.used_llm.is_(True)))
 
 
-def _check_cap(db: Session) -> None:
+def cap_message() -> str:
+    return (f"This demo reads up to {settings.MAX_RUNS_PER_DAY} new invoices a day with AI, and today's limit has been "
+            "reached. The sample invoices and files it has read before still work. Please try new files again "
+            "tomorrow.")
+
+
+def _check_cap(db: Session, file_bytes: bytes) -> None:
+    """Only a file the AI must read counts; one with a cached reading always goes through."""
+    if not needs_llm(file_hash(file_bytes)):
+        return
     if runs_today(db) >= settings.MAX_RUNS_PER_DAY:
-        raise DailyCapReached(
-            f"This demo processes up to {settings.MAX_RUNS_PER_DAY} invoices a day and today's "
-            "limit has been reached. Please try again tomorrow, or open an earlier run from the dashboard."
-        )
+        raise DailyCapReached(cap_message())
 
 
 def start_run(file_bytes: bytes, file_name: str | None) -> str:
     """Create the invoices row and store the PDF. The pipeline runs later in execute_run."""
     with SessionLocal() as db:
-        _check_cap(db)
+        _check_cap(db, file_bytes)
         ctx = create_run(db, file_bytes, file_name, today=today(), store_file=True)
         return ctx.run_id
 
@@ -100,7 +106,7 @@ def create_corrected_run(db: Session, parent: Invoice, file_bytes: bytes, file_n
                          role: str | None) -> str:
     """The shared part of a corrected upload (reviewer or vendor link). Anything else pending on `db` is committed
     with the new run."""
-    _check_cap(db)
+    _check_cap(db, file_bytes)
     run_id = new_run_id()
     review.supersede(db, parent, role, run_id)
     create_run(db, file_bytes, file_name, today=today(), store_file=True, run_id=run_id, parent_upload_id=parent.run_id)

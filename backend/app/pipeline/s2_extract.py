@@ -1,5 +1,10 @@
-"""Stage 2: extract fields with one LLM call (cases 1.4-1.7, 2.1-2.3)."""
+"""Stage 2: extract fields with one LLM call (cases 1.4-1.7, 2.1-2.3).
 
+Grounding (2.2): on a text PDF, the fields that matter most must be printed in the document. A value the model
+returned that isn't in the text is held for a person to confirm, never trusted.
+"""
+
+import re
 from datetime import date
 
 from app import llm
@@ -18,6 +23,56 @@ FIELD_LABELS = {
     "bank_account": "bank account",
     "po_reference": "PO reference",
 }
+
+
+GROUNDED_FIELDS = ("invoice_number", "vendor_gstin", "bank_account", "total")
+NOT_CHECKED_SCAN = "not checked: scanned"
+_CURRENCY = re.compile(r"₹|\brs\.?|\binr\b")
+_ZERO_PAISE = re.compile(r"\.00(?!\d)")
+
+
+def grounding_key(s: str) -> str:
+    """How a value and the document text are compared: lower case, no spaces, commas or currency signs, no
+    trailing .00. '₹1,41,600.00' and '141600' both become '141600'."""
+    s = _CURRENCY.sub("", s.lower()).replace(",", "")
+    s = _ZERO_PAISE.sub("", s)  # before spaces go, so '600.00 5' can't read as '600.005'
+    return re.sub(r"\s", "", s)
+
+
+def _as_text(field: str, value) -> str:
+    return f"{value:.2f}" if field == "total" else str(value)
+
+
+def _shown(field: str, value) -> str:
+    return format_inr(rupees_to_paise(value)) if field == "total" else str(value)
+
+
+def ungrounded(inv: ExtractedInvoice, text: str) -> list[str]:
+    """The grounded fields that were extracted but can't be found in the document text."""
+    doc = grounding_key(text)
+    missing = []
+    for f in GROUNDED_FIELDS:
+        value = getattr(inv, f)
+        if value is None or (isinstance(value, str) and not value.strip()):
+            continue
+        if grounding_key(_as_text(f, value)) not in doc:
+            missing.append(f)
+    return missing
+
+
+def ground(ctx: RunContext, inv: ExtractedInvoice, text: str | None) -> dict:
+    """Case 2.2: check the extracted fields against the document's own text (None for a scan, which has none).
+    Each field that isn't there is a Hold and is marked low confidence, so the review form flags it."""
+    if text is None:
+        return {"checked": False, "note": NOT_CHECKED_SCAN}
+    missing = ungrounded(inv, text)
+    for f in missing:
+        value = getattr(inv, f)
+        setattr(inv.confidence, f, "low")
+        ctx.add("2.2", "hold", f"Couldn't find {FIELD_LABELS[f]} '{_shown(f, value)}' in the document; please "
+                               "confirm.", ["AP"], {"field": f, "value": _as_text(f, value), "grounding": True})
+    checked = [f for f in GROUNDED_FIELDS if getattr(inv, f) not in (None, "")]
+    return {"checked": True, "fields": checked, "not_found": missing}
 
 
 def _paise(v: float | None) -> int | None:
@@ -82,15 +137,19 @@ def write_invoice_row(row: Invoice, doc_type: str | None, extraction: dict | Non
     ]
 
 
-def prepare_invoice(ctx: RunContext, inv: ExtractedInvoice) -> list[str]:
-    """One extracted invoice made ready for the checks; returns the fields read with low confidence (2.2)."""
+def prepare_invoice(ctx: RunContext, inv: ExtractedInvoice, text: str | None) -> tuple[list[str], dict]:
+    """One extracted invoice made ready for the checks. `text` is its own pages' text, None for a scan.
+    Returns the fields held at low confidence (2.2), read so or not found in the text, and the grounding result."""
+    low_keys = [f for f, c in inv.confidence.model_dump().items() if c == "low"]
+    low = [FIELD_LABELS[f] for f in low_keys]
+    if low:
+        ctx.add("2.2", "hold", f"Couldn't read the {', '.join(low)} reliably; please confirm.", ["AP"], {"fields": low})
+    grounding = ground(ctx, inv, text)  # before any change to the values: it checks what the model read
+    low += [FIELD_LABELS[f] for f in grounding.get("not_found", []) if f not in low_keys]
     inv.currency = normalise_currency(inv.currency)  # 'Rs.', '₹', 'INR' → 'INR'
     if inv.tax_inclusive:
         back_calculate_tax(ctx, inv)
-    low = [FIELD_LABELS[f] for f, c in inv.confidence.model_dump().items() if c == "low"]
-    if low:
-        ctx.add("2.2", "hold", f"Couldn't read the {', '.join(low)} reliably; please confirm.", ["AP"], {"fields": low})
-    return low
+    return low, grounding
 
 
 def run(ctx: RunContext) -> StageResult:
@@ -136,11 +195,12 @@ def run(ctx: RunContext) -> StageResult:
                            {"count": n, "page_ranges": ranges, "pages": pages, "llm_calls": ctx.llm_calls})
 
     inv = ex.invoices[0]
-    low = prepare_invoice(ctx, inv)
+    low, grounding = prepare_invoice(ctx, inv, None if ctx.is_scan else ctx.text)
     ctx.extraction = inv.model_dump(mode="json")
     save_invoice_fields(ctx, inv)
 
     msg = f"{len(inv.lines)} line(s), total {format_inr(_paise(inv.total))}"
     if low:
         msg += f"; low confidence: {', '.join(low)}"
-    return StageResult("warn" if low else "pass", msg, {"fields": ctx.extraction, "llm_calls": ctx.llm_calls})
+    return StageResult("warn" if low else "pass", msg, {"fields": ctx.extraction, "llm_calls": ctx.llm_calls,
+                                                         "grounding": grounding})

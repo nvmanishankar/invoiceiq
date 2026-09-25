@@ -16,6 +16,52 @@ def ledger_rows(ctx: RunContext, po: PurchaseOrder) -> list[dict]:
             for r in rows]
 
 
+def add_over_balance(ctx: RunContext, po: PurchaseOrder, remaining: int, total: int, details: dict,
+                     note: str = "") -> None:
+    ctx.add("6.5", "hold", f"Only {format_inr(remaining)} remains on {po.po_id}; this invoice is "
+                           f"{format_inr(total)}.{note}", ["Vendor"], details)
+
+
+def add_over_quantity(ctx: RunContext, po: PurchaseOrder, il, pl, already: float, check: dict,
+                      note: str = "") -> None:
+    ctx.add("6.6", "hold", f"{il.description}: {format_qty(already + il.qty)} invoiced in total "
+                           f"vs {format_qty(pl.qty)} ordered on {po.po_id}.{note}", ["Vendor"], check)
+
+
+def _tolerance(ctx: RunContext, expected: int) -> int:
+    return allowed_diff(expected, ctx.company.tolerance_pct, ctx.company.tolerance_abs_paise)
+
+
+APPROVED_MEANWHILE = " Another invoice against it was approved while this one was being checked."
+
+
+def recheck_at_approval(ctx: RunContext) -> bool:
+    """The balance and quantity rules again, just before approving, on the ledger as it is now. The caller holds the
+    PO lock (services/po.lock_po), so nothing can be approved against the PO between this read and the approval.
+    Adds 6.5 / 6.6 Holds and returns False when the invoice no longer fits."""
+    po, inv = ctx.po, ctx.inv
+    before = len(ctx.findings)
+    remaining = po_remaining_paise(ctx.db, po, exclude_run=ctx.run_id)
+    total = inv.total_paise
+    if total is not None and total > remaining + _tolerance(ctx, remaining):
+        add_over_balance(ctx, po, remaining, total, {
+            "po_id": po.po_id, "po_total_paise": po_total_paise(po), "remaining_paise": remaining,
+            "invoice_total_paise": total, "previous_invoices": ledger_rows(ctx, po), "at_approval": True,
+        }, APPROVED_MEANWHILE)
+    if not ctx.bundled:
+        for pair in ctx.line_pairs:
+            il, pl = pair.inv, pair.po_line
+            if il.qty is None:
+                continue
+            already = invoiced_qty(ctx.db, po.po_id, pl.line_no, exclude_run=ctx.run_id)
+            if already + il.qty > pl.qty + 1e-9:
+                add_over_quantity(ctx, po, il, pl, already, {
+                    "invoice_line": il.description, "po_line": pl.description, "po_line_no": pl.line_no,
+                    "already": already, "this_invoice": il.qty, "ordered": pl.qty, "at_approval": True,
+                }, APPROVED_MEANWHILE)
+    return len(ctx.findings) == before
+
+
 def run(ctx: RunContext) -> StageResult:
     po = ctx.po
     if po is None:
@@ -23,7 +69,7 @@ def run(ctx: RunContext) -> StageResult:
     inv = ctx.inv
 
     def tol(expected: int) -> int:
-        return allowed_diff(expected, ctx.company.tolerance_pct, ctx.company.tolerance_abs_paise)
+        return _tolerance(ctx, expected)
 
     before = len(ctx.findings)
 
@@ -38,8 +84,7 @@ def run(ctx: RunContext) -> StageResult:
     if total is not None:
         if total > remaining + tol(remaining):
             if previous:
-                ctx.add("6.5", "hold", f"Only {format_inr(remaining)} remains on {po.po_id}; this invoice is "
-                                       f"{format_inr(total)}.", ["Vendor"], details)
+                add_over_balance(ctx, po, remaining, total, details)
             else:
                 ctx.add("6.3", "hold", f"This invoice ({format_inr(total)}) is more than {po.po_id} allows "
                                        f"({format_inr(remaining)}), beyond the tolerance of {format_inr(tol(remaining))}.",
@@ -68,8 +113,7 @@ def run(ctx: RunContext) -> StageResult:
                 already = invoiced_qty(ctx.db, po.po_id, pl.line_no, exclude_run=ctx.run_id)
                 check.update(already=already, this_invoice=il.qty, ordered=pl.qty)
                 if already + il.qty > pl.qty + 1e-9:
-                    ctx.add("6.6", "hold", f"{il.description}: {format_qty(already + il.qty)} invoiced in total "
-                                           f"vs {format_qty(pl.qty)} ordered on {po.po_id}.", ["Vendor"], check)
+                    add_over_quantity(ctx, po, il, pl, already, check)
             if il.unit_price_paise is not None:
                 check.update(invoice_price_paise=il.unit_price_paise, po_price_paise=pl.unit_price_paise)
                 if il.unit_price_paise > pl.unit_price_paise + tol(pl.unit_price_paise):

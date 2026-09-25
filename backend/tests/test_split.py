@@ -130,7 +130,7 @@ def test_parent_stream_ends_normally(client):
     assert events[-2][1]["status"] == "split" and events[-2][1]["decision"] is None
 
 
-def test_no_llm_calls_and_the_daily_cap_counts_the_upload_once(client, monkeypatch):
+def test_no_llm_calls_and_split_children_never_count_towards_the_cap(client, monkeypatch):
     monkeypatch.setattr(settings, "MAX_RUNS_PER_DAY", 1)
     parent_id = upload(client)
     parent = detail(client, parent_id)
@@ -139,9 +139,21 @@ def test_no_llm_calls_and_the_daily_cap_counts_the_upload_once(client, monkeypat
     assert all(k["stages"][-1]["details"]["llm_calls"] == 0 for k in kids)
     assert all(k["decision"]["decision"] == "Approve" for k in kids)  # the cap didn't stop the children
     with SessionLocal() as db:
-        assert run_service.runs_today(db) == 1
+        assert run_service.runs_today(db) == 0  # a cached file: neither the upload nor its children count
+        rows = db.scalars(select(Invoice).where(Invoice.parent_upload_id == parent_id)).all()
+        assert [r.used_llm for r in rows] == [False, False]
     r = client.post("/api/runs", files={"file": ("again.pdf", TWO_BYTES, "application/pdf")})
-    assert r.status_code == 429
+    assert r.status_code == 202
+
+
+def test_a_split_that_needed_the_ai_counts_once(client, variant, monkeypatch):
+    data = variant("fresh", lambda ex: None)  # same invoices, but a file the AI had to read
+    monkeypatch.setattr(run_service, "needs_llm", lambda h: True)
+    monkeypatch.setattr("app.pipeline.runner.needs_llm", lambda h: True)
+    parent_id = upload(client, data)
+    assert len(children(client, parent_id)) == 2
+    with SessionLocal() as db:
+        assert run_service.runs_today(db) == 1
 
 
 def test_children_never_call_the_llm_even_after_a_review(client, variant, monkeypatch):

@@ -201,7 +201,7 @@ def test_post_respects_the_daily_cap(client, monkeypatch):
     original, token = waiting(client)
     with SessionLocal() as db:
         monkeypatch.setattr(settings, "MAX_RUNS_PER_DAY", run_service.runs_today(db))
-    r = respond(client, token)
+    r = respond(client, token, data=b"%PDF-1.4 a new file the AI would have to read\n")
     assert r.status_code == 429 and r.json()["state"] == "busy"
     assert detail(client, original)["status"] == "waiting_on_vendor"
     assert client.get(f"/api/respond/{token}").status_code == 200  # still usable tomorrow

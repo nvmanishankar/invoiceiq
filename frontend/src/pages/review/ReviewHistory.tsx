@@ -13,7 +13,7 @@ const ACTION: Record<string, string> = {
 }
 
 // Shown in their own way, not as "X changed from … to …".
-const NOT_CHANGES = new Set(["email", "replaced_by"])
+const NOT_CHANGES = new Set(["email", "replaced_by", "over_budget"])
 
 const shown = (display: string | null | undefined, raw: unknown) =>
   display ?? (raw == null || raw === "" ? "blank" : String(raw))
@@ -38,6 +38,12 @@ export function ReviewHistory({ reviews }: { reviews: ReviewEntry[] }) {
               <span className="text-ink-2">{by}</span>
             </p>
             {r.reason && <p className="mt-1 text-ink-2">Reason: {r.reason}</p>}
+            {r.field_changes?.over_budget && (
+              <p className="mt-1 text-ink-2">
+                Confirmed approving past the PO: takes {String((r.field_changes.over_budget as FieldChange & { po_id?: string }).po_id ?? "the PO")}{" "}
+                {String((r.field_changes.over_budget as FieldChange & { text?: string }).text ?? "")} over.
+              </p>
+            )}
             {email && <EmailSent email={email} />}
             {changes.length > 0 && (
               <ul className="mt-2 flex flex-col gap-1 font-mono text-[12px] text-ink-2">

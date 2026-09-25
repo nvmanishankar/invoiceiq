@@ -22,6 +22,7 @@ from app.roles import DEFAULT_ROLE
 from app.roles import FINANCE as FINANCE_ROLE
 from app.schemas import ExtractedInvoice
 from app.services import vendor_email
+from app.services.po import lock_po, overage
 from app.utils.money import format_inr
 
 ACTIONS = ("confirm", "pick_po", "override", "send_to_vendor", "reject", "send_reminder")
@@ -46,10 +47,12 @@ FIELD_LABELS = {
 
 
 class ReviewError(Exception):
-    def __init__(self, status: int, message: str):
+    def __init__(self, status: int, message: str, state: str | None = None, extra: dict | None = None):
         super().__init__(message)
         self.status = status
         self.message = message
+        self.state = state  # lets the page react, e.g. "over_budget" shows the confirm checkbox
+        self.extra = extra or {}
 
 
 @dataclass
@@ -155,6 +158,9 @@ def confirm(db: Session, row: Invoice, stages: list[RunStage], role: str, fields
     changes = {}
     for field, raw in fields.items():
         value = _clean(field, raw)
+        if field == "bank_account" and isinstance(value, str) and "…" in value:
+            raise ReviewError(422, "Bank account is shown masked. Type the full account number from the invoice, or "
+                                   "leave the field as it is.")
         if value != before.get(field):
             changes[field] = {"label": FIELD_LABELS[field], "before": before.get(field), "after": value,
                               "before_display": None if before.get(field) is None else _money_text(field, before.get(field)),
@@ -223,12 +229,24 @@ def _close(row: Invoice, decision: str, status: str) -> dict:
     return before
 
 
-def override(db: Session, row: Invoice, stages: list[RunStage], role: str, reason: str | None) -> Outcome:
+def override(db: Session, row: Invoice, stages: list[RunStage], role: str, reason: str | None,
+             confirm_over_budget: bool = False) -> Outcome:
     reason = _required(reason, "reason for approving anyway")
     if _has_fraud(stages) and role != FINANCE_ROLE:
         raise ReviewError(403, "This invoice has a fraud finding. Only Finance can clear it, after verifying the "
                                "vendor by phone on the number on file.")
+    over = None
+    if row.po_id is not None:
+        # The PO stays locked until apply commits, so the balance can't change between this check and the approval.
+        lock_po(db, row.po_id)
+        over = overage(db, row)
+        if over and not confirm_over_budget:
+            raise ReviewError(409, f"Approving this invoice takes {over.po_id} {over.text} over. Tick the "
+                                   "confirmation to approve it anyway.", "over_budget", {"overage": over.as_dict()})
     changes = _close(row, "Approve", "approved")
+    if over:
+        changes["over_budget"] = {"label": "Over PO, confirmed", "before": None, "after": f"{over.po_id}: {over.text}",
+                                  "confirmed": True, **over.as_dict()}
     note = {"code": "review", "label": "Override", "severity": "pass", "message": f"Approved by {role}: {reason}",
             "audience": []}
     row.decision_reasons = [note, *(row.decision_reasons or [])]
@@ -325,7 +343,8 @@ def email_preview(db: Session, run_id: str, reasons: list[str] | None = None, no
 
 def apply(db: Session, run_id: str, action: str, role: str | None, *, fields: dict | None = None,
           po_id: str | None = None, reason: str | None = None, note: str | None = None,
-          reasons: list[str] | None = None, subject: str | None = None, body: str | None = None) -> Outcome:
+          reasons: list[str] | None = None, subject: str | None = None, body: str | None = None,
+          confirm_over_budget: bool = False) -> Outcome:
     role = (role or "").strip() or DEFAULT_ROLE
     row = db.get(Invoice, run_id)
     if row is None:
@@ -340,7 +359,7 @@ def apply(db: Session, run_id: str, action: str, role: str | None, *, fields: di
     elif action == "pick_po":
         out = pick_po(db, row, stages, role, po_id)
     elif action == "override":
-        out = override(db, row, stages, role, reason)
+        out = override(db, row, stages, role, reason, confirm_over_budget)
     elif action == "reject":
         out = reject(db, row, stages, role, reason)
     elif action == "send_reminder":

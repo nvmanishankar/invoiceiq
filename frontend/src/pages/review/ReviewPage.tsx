@@ -112,7 +112,8 @@ export function ReviewPage() {
 function RunReview({ runId }: { runId: string }) {
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const run = useQuery({ queryKey: ["run", runId], queryFn: () => getRun(runId) })
+  const { role } = useRole()
+  const run = useQuery({ queryKey: ["run", runId, role], queryFn: () => getRun(runId, role) })
 
   if (run.isLoading) return <p className="text-ink-3">Loading {runId}…</p>
   if (run.error)
@@ -135,7 +136,8 @@ function RunReview({ runId }: { runId: string }) {
     qc.invalidateQueries({ queryKey: ["alerts"] })
     navigate(`/process?run=${encodeURIComponent(id)}`)
   }
-  return <ReviewDetail run={run.data} onDone={done} />
+  // Keyed by role: Finance sees full bank numbers on a fraud hold, so the fields start again from what they can see.
+  return <ReviewDetail key={role} run={run.data} onDone={done} />
 }
 
 function ReviewDetail({ run, onDone }: { run: RunDetail; onDone: (runId: string) => void }) {

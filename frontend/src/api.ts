@@ -53,8 +53,8 @@ async function check(res: Response): Promise<Response> {
   throw new ApiError(res.status, detail, errors, state)
 }
 
-export async function getJson<T>(path: string): Promise<T> {
-  const res = await check(await fetch(path))
+export async function getJson<T>(path: string, headers: Record<string, string> = {}): Promise<T> {
+  const res = await check(await fetch(path, { headers }))
   return res.json() as Promise<T>
 }
 
@@ -70,7 +70,9 @@ async function postJson<T>(path: string, body?: unknown, headers: Record<string,
 
 export const fetchHealth = () => getJson<{ ok: boolean }>("/api/health")
 export const getSamples = () => getJson<Sample[]>("/api/samples")
-export const getRun = (runId: string) => getJson<RunDetail>(`/api/runs/${encodeURIComponent(runId)}`)
+/** Bank account numbers come back masked, except for Finance (X-Role) on a run held for fraud. */
+export const getRun = (runId: string, role?: string) =>
+  getJson<RunDetail>(`/api/runs/${encodeURIComponent(runId)}`, role ? { "X-Role": role } : {})
 export const runFileUrl = (runId: string) => `/api/runs/${encodeURIComponent(runId)}/file`
 export const runStreamUrl = (runId: string) => `/api/runs/${encodeURIComponent(runId)}/stream`
 

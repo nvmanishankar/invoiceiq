@@ -152,6 +152,9 @@ class Invoice(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_seed: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Needed the AI: no cached extraction for the file, or a model call was made. Only these count towards the daily
+    # cap. Null on rows from before the column existed (they don't count).
+    used_llm: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     vendor: Mapped[Vendor | None] = relationship()
     po: Mapped[PurchaseOrder | None] = relationship()

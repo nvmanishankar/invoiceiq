@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -19,7 +19,7 @@ from app.db import SessionLocal, get_db
 from app.models import Invoice, RunFile, RunStage, Vendor
 from app.services import review as review_service
 from app.services import runs as run_service
-from app.services.views import decision_dict, run_detail, run_summary, stage_dict, waiting_since
+from app.services.views import decision_dict, mask_bank, run_detail, run_summary, stage_dict, waiting_since
 
 router = APIRouter(prefix="/api", tags=["runs"])
 
@@ -75,7 +75,7 @@ def _poll(run_id: str, after: int) -> tuple[list[dict], dict | None]:
         finished = run is not None and run.status != "running" and run.finished_at is not None
         rows = db.scalars(select(RunStage).where(RunStage.run_id == run_id, RunStage.stage_order > after)
                           .order_by(RunStage.stage_order)).all()
-        return [stage_dict(r) for r in rows], decision_dict(db, run) if finished else None
+        return [mask_bank(stage_dict(r)) for r in rows], decision_dict(db, run) if finished else None
 
 
 def _sse(event: str, data) -> str:
@@ -142,8 +142,10 @@ def _get_run(db: Session, run_id: str) -> Invoice:
 
 
 @router.get("/runs/{run_id}")
-def get_run(run_id: str, db: Session = Depends(get_db)):
-    return run_detail(db, _get_run(db, run_id))
+def get_run(run_id: str, x_role: str | None = Header(None, description="Finance sees full bank numbers on a fraud hold"),
+            db: Session = Depends(get_db)):
+    """Bank account numbers are masked to the last 4 digits, except for Finance on a run held for fraud."""
+    return run_detail(db, _get_run(db, run_id), x_role)
 
 
 @router.get("/runs/{run_id}/file")
@@ -171,6 +173,8 @@ class ReviewBody(BaseModel):
     reasons: list[str] | None = Field(None, description="send_to_vendor: ticked case codes, plus 'other'")
     subject: str | None = Field(None, description="send_to_vendor: the email subject as the reviewer left it")
     body: str | None = Field(None, description="send_to_vendor: the email body as the reviewer left it")
+    confirm_over_budget: bool = Field(False, description="override: approve even though it takes the PO over its "
+                                                         "remaining balance or ordered quantity")
 
 
 @router.post("/runs/{run_id}/review")
@@ -178,13 +182,17 @@ def review_run(run_id: str, payload: ReviewBody, background: BackgroundTasks,
                x_role: str | None = Header(None, description="Procurement / AP clerk / Finance"),
                db: Session = Depends(get_db)):
     """Confirm (resume from stage 3), pick PO (resume from stage 6), override, send to vendor, remind the vendor,
-    or reject."""
+    or reject. An override past the PO's balance or quantity is 409 (state "over_budget", with the overage) unless
+    confirm_over_budget is true."""
     try:
         out = review_service.apply(db, run_id, payload.action, x_role, fields=payload.fields, po_id=payload.po_id,
                                    reason=payload.reason, note=payload.note, reasons=payload.reasons,
-                                   subject=payload.subject, body=payload.body)
+                                   subject=payload.subject, body=payload.body,
+                                   confirm_over_budget=payload.confirm_over_budget)
     except review_service.ReviewError as e:
         db.rollback()
+        if e.state:
+            return JSONResponse({"detail": e.message, "state": e.state, **e.extra}, status_code=e.status)
         raise HTTPException(e.status, e.message)
     if out.resume_from is not None:
         background.add_task(run_service.resume_run, run_id, out.resume_from)

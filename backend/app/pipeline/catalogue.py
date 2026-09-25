@@ -80,7 +80,9 @@ CASES = [
     # 2 Extract fields
     _c("2.1", "All fields clear", "The AI is confident about every key field.", "Pass", sample=S01, finding=False),
     _c("2.2", "Low-confidence reading", "The AI isn't sure about the invoice number, date, total, GSTIN, bank "
-       "account or PO reference, or couldn't read the file at all.", "Hold", ["AP"]),
+       "account or PO reference, or couldn't read the file at all. On a text PDF, the invoice number, GSTIN, bank "
+       "account and total must also be printed in the document; one that isn't is held for a person to confirm.",
+       "Hold", ["AP"], note="Scans aren't checked against their text: they have none."),
     _c("2.3", "Tax included in prices", "Prices are printed including GST, so the tax is taken out of each line "
        "before any check.", "Info"),
     # 3 Completeness and maths
@@ -106,8 +108,10 @@ CASES = [
        sample=S10),
     _c("4.6", "GSTIN doesn't match vendor", "The name matches a known vendor but the GSTIN isn't the one on file: "
        "possible impersonation.", "Hold", ["Finance", "AP"], fraud=True),
-    _c("4.7", "Bank account changed", "The bank account on the invoice differs from the one on file: the classic "
-       "payment fraud.", "Hold", ["Finance", "AP"], sample=S06, fraud=True),
+    _c("4.7", "Bank account changed", "The bank account on the invoice differs from the one on file, or the number "
+       "matches but the IFSC doesn't: the classic payment fraud.", "Hold", ["Finance", "AP"], sample=S06, fraud=True,
+       also="Info", note="An invoice with no bank details gets an info note instead: payment goes to the account on "
+                         "file."),
     # 5 Match PO
     _c("5.1", "PO printed and found", "The PO number is printed exactly and belongs to this vendor.", "Pass",
        sample=S01),

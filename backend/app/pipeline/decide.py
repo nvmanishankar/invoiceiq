@@ -8,7 +8,9 @@ from collections import defaultdict
 
 from app import alerts
 from app.models import Invoice
+from app.pipeline import s6_amounts
 from app.pipeline.context import Finding, RunContext, StageResult
+from app.services.po import lock_po
 from app.utils.money import format_inr
 
 STATUS = {"Reject": "rejected", "Hold": "needs_review", "Approve": "approved"}
@@ -78,6 +80,12 @@ def run(ctx: RunContext) -> StageResult:
                                "Finance must verify both.", ["Finance", "AP"], {"siblings": ctx.sibling_fraud},
                 fraud=True)
         decision = decide(ctx.findings)
+    if decision == "Approve" and ctx.po is not None:
+        # Another run may have been approved against the same PO since stage 6 read its balance. Lock the PO,
+        # read the balance again, and approve only if it still fits; save_decision's commit releases the lock.
+        lock_po(ctx.db, ctx.po.po_id)
+        if not s6_amounts.recheck_at_approval(ctx):
+            decision = decide(ctx.findings)
     ctx.decision = decision
     why = reasons(ctx.findings, decision)
     audiences = alert_audiences(ctx.findings)

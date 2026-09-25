@@ -1,5 +1,7 @@
 """Stage 4: verify the vendor by GSTIN, name only as a fallback (cases 4.1-4.7)."""
 
+import re
+
 from rapidfuzz import fuzz
 from sqlalchemy import select
 
@@ -26,6 +28,33 @@ def best_name_match(db, name: str | None) -> Vendor | None:
 
 def _last4(s: str | None) -> str:
     return digits(s)[-4:]
+
+
+def _ifsc(s: str | None) -> str:
+    return re.sub(r"\s", "", s or "").upper()
+
+
+def check_bank(ctx: RunContext, vendor: Vendor) -> None:
+    """Case 4.7: the payee on the invoice must be the account on file: same number and, when both give one, the same
+    IFSC (the same number at another branch is another account). No bank details means we pay the account on file."""
+    inv = ctx.inv
+    if not inv.bank_account:
+        ctx.add("4.7", "info", "No bank details on the invoice; payment goes to the account on file.", [],
+                {"file_account_last4": _last4(vendor.bank_account)})
+        return
+    evidence = {"invoice_account_last4": _last4(inv.bank_account), "file_account_last4": _last4(vendor.bank_account),
+                "invoice_ifsc": inv.ifsc, "file_ifsc": vendor.ifsc_or_swift, "phone_on_file": vendor.phone}
+    if digits(inv.bank_account) != digits(vendor.bank_account):
+        ctx.add("4.7", "hold",
+                f"The bank account on the invoice (…{_last4(inv.bank_account)}) differs from the one on file "
+                f"(…{_last4(vendor.bank_account)}). Fraud risk: verify by phone using the number on file.",
+                ["Finance", "AP"], evidence, fraud=True)
+    elif _ifsc(inv.ifsc) and _ifsc(vendor.ifsc_or_swift) and _ifsc(inv.ifsc) != _ifsc(vendor.ifsc_or_swift):
+        ctx.add("4.7", "hold",
+                f"The account number matches the one on file (…{_last4(vendor.bank_account)}), but the IFSC on the "
+                f"invoice ({_ifsc(inv.ifsc)}) differs from the one on file ({_ifsc(vendor.ifsc_or_swift)}), so the "
+                "money would go to a different bank. Fraud risk: verify by phone using the number on file.",
+                ["Finance", "AP"], evidence, fraud=True)
 
 
 def run(ctx: RunContext) -> StageResult:
@@ -67,14 +96,8 @@ def run(ctx: RunContext) -> StageResult:
         ctx.add("4.5", "reject", f"{vendor.name} is blocked in the vendor master.", ["Procurement"],
                 {"vendor_id": vendor.vendor_id})
 
-    if vendor is not None and inv.bank_account and digits(inv.bank_account) != digits(vendor.bank_account):
-        ctx.add("4.7", "hold",
-                f"The bank account on the invoice (…{_last4(inv.bank_account)}) differs from the one on file "
-                f"(…{_last4(vendor.bank_account)}). Fraud risk: verify by phone using the number on file.",
-                ["Finance", "AP"],
-                {"invoice_account_last4": _last4(inv.bank_account), "file_account_last4": _last4(vendor.bank_account),
-                 "invoice_ifsc": inv.ifsc, "file_ifsc": vendor.ifsc_or_swift, "phone_on_file": vendor.phone},
-                fraud=True)
+    if vendor is not None:
+        check_bank(ctx, vendor)
 
     ctx.vendor = vendor
     details = {"gstin": g, "gstin_valid": g_valid, "vendor_id": vendor.vendor_id if vendor else None, "matched_by": how}

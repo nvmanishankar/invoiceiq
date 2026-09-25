@@ -11,6 +11,7 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import llm
 from app.config import settings
 from app.models import CompanySettings, Invoice, RunFile, RunStage, clip, utcnow
 from app.pipeline import (
@@ -58,6 +59,16 @@ def new_run_id() -> str:
     return f"RUN-{uuid.uuid4().hex[:10].upper()}"
 
 
+def needs_llm(h: str) -> bool:
+    """A file read before (or a sample) has a cached extraction; anything else needs the model to read it."""
+    return llm.load_cache(h) is None
+
+
+def _record_llm_use(ctx: RunContext, row: Invoice | None) -> None:
+    if row is not None and ctx.llm_calls:
+        row.used_llm = True
+
+
 def create_run(db: Session, file_bytes: bytes, file_name: str | None = None, today: date | None = None,
                store_file: bool = False, run_id: str | None = None, parent_upload_id: str | None = None) -> RunContext:
     """The invoices row (and the file). Anything else pending on `db` is committed with it."""
@@ -72,7 +83,7 @@ def create_run(db: Session, file_bytes: bytes, file_name: str | None = None, tod
         today=today or date.today(),
     )
     db.add(Invoice(run_id=ctx.run_id, parent_upload_id=parent_upload_id, file_name=clip(Invoice, "file_name", file_name),
-                   file_hash=ctx.file_hash, status="running"))
+                   file_hash=ctx.file_hash, status="running", used_llm=needs_llm(ctx.file_hash)))
     if store_file:
         db.add(RunFile(run_id=ctx.run_id, file_name=clip(RunFile, "file_name", file_name), size=len(file_bytes),
                        data=file_bytes))
@@ -185,7 +196,7 @@ def _add_child(ctx: RunContext, inv: ExtractedInvoice, pages: list[int], part: i
     child = RunContext(run_id=new_run_id(), file_bytes=data, file_hash=file_hash(data), company=ctx.company,
                        db=ctx.db, file_name=_child_name(ctx.file_name, pages), today=ctx.today, doc_type="invoice")
     row = Invoice(run_id=child.run_id, parent_upload_id=ctx.run_id, file_name=clip(Invoice, "file_name", child.file_name),
-                  file_hash=child.file_hash, status="running")
+                  file_hash=child.file_hash, status="running", used_llm=False)  # read as part of its parent
     ctx.db.add(row)
     ctx.db.add(RunFile(run_id=child.run_id, file_name=clip(RunFile, "file_name", child.file_name), size=len(data),
                        data=data))
@@ -199,14 +210,15 @@ def _add_child(ctx: RunContext, inv: ExtractedInvoice, pages: list[int], part: i
     ctx.db.add(stage_row(child.run_id, 1, STAGES[0][0], read, t0, child.findings))
 
     seen = len(child.findings)
-    low = s2_extract.prepare_invoice(child, inv)
+    text = None if ctx.is_scan else "\n".join(ctx.page_texts[p - 1] for p in pages if 0 < p <= len(ctx.page_texts))
+    low, grounding = s2_extract.prepare_invoice(child, inv, text)  # checked against its own pages only
     child.extraction = inv.model_dump(mode="json")
     s2_extract.write_invoice_row(row, "invoice", child.extraction, inv)
     msg = f"{origin}: {len(inv.lines)} line(s), total {format_inr(row.total_paise)}"
     if low:
         msg += f"; low confidence: {', '.join(low)}"
     fields = StageResult("warn" if low else "pass", msg, {"fields": child.extraction, "llm_calls": 0,
-                                                            "split_from": ctx.run_id})
+                                                            "split_from": ctx.run_id, "grounding": grounding})
     ctx.db.add(stage_row(child.run_id, 2, STAGES[1][0], fields, t0, child.findings[seen:]))
     return child.run_id
 
@@ -220,6 +232,7 @@ def _finish_split(ctx: RunContext, min_ms: int, on_stage) -> RunContext:
         ids = [_add_child(ctx, inv, pages, i, len(parts)) for i, (inv, pages) in enumerate(parts, start=1)]
         row = ctx.db.get(Invoice, ctx.run_id)
         row.doc_type = "invoice"
+        _record_llm_use(ctx, row)
         ctx.db.commit()
     except Exception as e:  # never crash the run: without its children the file is held for a person
         ctx.db.rollback()
@@ -302,5 +315,6 @@ def run_pipeline(
     row = ctx.db.get(Invoice, ctx.run_id)
     if row is not None:
         row.finished_at = utcnow()
+        _record_llm_use(ctx, row)
         ctx.db.commit()
     return ctx

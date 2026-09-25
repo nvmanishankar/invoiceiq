@@ -102,7 +102,9 @@ def _do(db, key: str, row: Invoice, role: str) -> int:
             review.apply(db, row.run_id, "confirm", role, fields={})
         elif key == "pick_po":
             review.apply(db, row.run_id, "pick_po", role, po_id=row.po_id)
-        elif key in ("override", "reject"):
+        elif key == "override":  # the role rules, not the PO balance (sample 04 is over it; that has its own tests)
+            review.apply(db, row.run_id, key, role, reason="checked", confirm_over_budget=True)
+        elif key == "reject":
             review.apply(db, row.run_id, key, role, reason="checked")
         elif key in ("send_to_vendor", "send_reminder"):
             if key == "send_reminder" and not review._has_fraud(review._stages(db, row.run_id)):

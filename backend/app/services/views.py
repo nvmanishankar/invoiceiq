@@ -9,9 +9,41 @@ from app.pipeline.context import Finding
 from app.pipeline.decide import alert_audiences
 from app.pipeline.runner import DECISION_ORDER
 from app.pipeline.split import SPLIT, split_origin
+from app.roles import FINANCE, role_of
 from app.services.po import invoiced_qty, po_invoiced_paise, po_total_paise
 from app.utils.money import format_inr
+from app.utils.normalise import digits
 from app.utils.timefmt import iso as _iso
+
+# Keys that hold a full bank account number anywhere in a response (a review's field_changes keeps before/after under
+# "bank_account" too).
+BANK_KEYS = {"bank_account", "bank_account_on_file"}
+MASK = "…"
+
+
+def mask_account(value):
+    """'50100234564521' → '…4521'. Anything that isn't a number with digits is left as it is (None, blank)."""
+    if not isinstance(value, str) or not digits(value):
+        return value
+    return f"{MASK}{digits(value)[-4:]}"
+
+
+def mask_bank(obj):
+    """A response with every bank account number masked to its last 4 digits, however deep it sits."""
+    if isinstance(obj, list):
+        return [mask_bank(x) for x in obj]
+    if not isinstance(obj, dict):
+        return obj
+    out = {}
+    for k, v in obj.items():
+        if k in BANK_KEYS and isinstance(v, dict):  # a review's change record: before / after and their display
+            out[k] = {ck: mask_account(cv) if ck in ("before", "after", "before_display", "after_display") else cv
+                      for ck, cv in v.items()}
+        elif k in BANK_KEYS:
+            out[k] = mask_account(v)
+        else:
+            out[k] = mask_bank(v)
+    return out
 
 
 def money(name: str, paise: int | None) -> dict:
@@ -214,9 +246,21 @@ def split_children(db: Session, inv: Invoice) -> list[dict] | None:
     return sorted(children, key=lambda c: (c["pages"] or [0])[0])
 
 
-def run_detail(db: Session, inv: Invoice) -> dict:
+def shows_full_bank(inv: Invoice, fraud: bool, role: str | None) -> bool:
+    """Full account numbers only where someone must act on them: Finance, on a run held for fraud, verifying the
+    change by phone. Everyone else, and every other run, sees the last 4 digits."""
+    return fraud and inv.decision == "Hold" and inv.status == "needs_review" and role_of(role) == FINANCE
+
+
+def run_detail(db: Session, inv: Invoice, role: str | None = None) -> dict:
     stages = _stages(db, inv.run_id)
     findings = findings_of(stages)
+    groups = alert_groups(findings)
+    out = _run_detail(db, inv, stages, findings, groups)
+    return out if shows_full_bank(inv, groups["fraud"], role) else mask_bank(out)
+
+
+def _run_detail(db: Session, inv: Invoice, stages: list[RunStage], findings: list[dict], groups: dict) -> dict:
     decision_stage = next((s for s in stages if s.stage_order == DECISION_ORDER), None)
     ex = inv.extraction or {}
     lines = [_invoice_line(ln) for ln in inv.lines]
@@ -259,7 +303,7 @@ def run_detail(db: Session, inv: Invoice) -> dict:
         "stages": [stage_dict(s) for s in stages],
         "findings": findings,
         "decision": decision_dict(db, inv, decision_stage) if inv.status != "running" else None,
-        "alert_groups": alert_groups(findings),
+        "alert_groups": groups,
         "alerts": [
             alert_dict(a, inv)
             for a in db.scalars(select(Alert).where(Alert.run_id == inv.run_id).order_by(Alert.alert_id))

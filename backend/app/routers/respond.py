@@ -11,8 +11,15 @@ from starlette.datastructures import UploadFile
 from app.db import SessionLocal, get_db
 from app.services import respond
 from app.services import runs as run_service
+from app.utils.ratelimit import RateLimiter
 
 router = APIRouter(prefix="/api/respond", tags=["respond"])
+
+# The link is public, so uploads through it are limited: per link, and per address across links.
+HOUR = 3600
+PER_TOKEN = RateLimiter(5, HOUR)
+PER_IP = RateLimiter(20, HOUR)
+SLOW_DOWN = "Too many uploads. Please wait a while and try again, or reply to our email with the PDF attached."
 
 
 def _error(e: respond.RespondError) -> JSONResponse:
@@ -35,7 +42,15 @@ def _submit(token: str, data: bytes, name: str, message: str | None) -> str:
 
 @router.post("/{token}", status_code=202)
 async def post_response(token: str, request: Request, background: BackgroundTasks):
-    """Multipart `file` (a PDF, same limit as uploads) and an optional `message`. Never says what was decided."""
+    """Multipart `file` (a PDF, same limit as uploads) and an optional `message`. Never says what was decided.
+    At most 5 uploads per link and 20 per address an hour; past that 429 with Retry-After."""
+    ip = request.client.host if request.client else "unknown"
+    wait = max(PER_TOKEN.retry_after(token), PER_IP.retry_after(ip))
+    if wait:
+        return JSONResponse({"detail": SLOW_DOWN, "state": "busy"}, status_code=429,
+                            headers={"Retry-After": str(wait)})
+    PER_TOKEN.hit(token)
+    PER_IP.hit(ip)
     if not request.headers.get("content-type", "").startswith("multipart/form-data"):
         return _error(respond.RespondError(415, "Please upload the corrected invoice as a PDF.", "invalid"))
     form = await request.form()

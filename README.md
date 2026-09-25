@@ -110,6 +110,20 @@ pytest -q                                              # full suite, offline
 python scripts/run_cli.py samples/01_happy_deccan.pdf  # one sample in the terminal
 ```
 
+## Known limitations and path to production
+
+This is a pilot. Each line is a gap today, then the fix.
+
+- **Identity:** the role picker is a header anyone can set → real logins with SSO (Google Workspace / Entra ID) and roles resolved on the server from the signed-in user.
+- **GSTIN checks:** format and checksum only → check the GSTIN is active, and verify e-invoice IRNs and signed QR codes, through a GSP / the IRP.
+- **Email:** everything goes to one owner inbox from a shared sender → our own domain with SPF, DKIM and DMARC, real vendor and team addresses, and inbound email so invoices and vendor replies arrive by mail.
+- **ERP:** vendors, POs and approvals live only in InvoiceIQ → connectors to SAP and Tally for master data in and approved invoices out.
+- **Scope of invoices:** PO-backed INR invoices, two-way match → non-PO spend, foreign currency, TDS, reverse charge, credit notes, and three-way match against goods receipts.
+- **Hosting:** free tier that sleeps, pipeline in in-process background tasks, in-memory rate limits → always-on hosting, a job queue with workers and retries, shared rate limiting, automated backups and restore drills, monitoring and alerting.
+- **Security:** bank numbers stored in clear, audit trail in ordinary tables → a security review and penetration test, field-level encryption of bank data, and an append-only (immutable) audit log.
+- **Data protection:** no formal privacy basis yet → DPDP Act compliance (notice, purpose limits, retention, breach process) and a data processing agreement with the AI provider (no training on our data, region and retention agreed).
+- **Accuracy:** measured on 10 samples → accuracy and exception rates measured on real invoice volume, with a labelled set and a regular review of misses.
+
 ## What I'd build next
 
 1. **Investigator agent on held invoices:** gathers evidence (vendor history, similar invoices, PO changes) and drafts a recommendation for the reviewer; rules still decide.

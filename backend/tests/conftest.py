@@ -65,3 +65,13 @@ def db(engine):
 def pytest_sessionfinish(session, exitstatus):
     for suffix in ("", "-wal", "-shm"):
         Path(f"{_TMP_DB}{suffix}").unlink(missing_ok=True)
+
+
+@pytest.fixture(autouse=True)
+def rate_limits():
+    """The vendor-link limits live in memory for the whole process; each test starts with none used."""
+    from app.routers import respond
+
+    respond.PER_TOKEN.reset()
+    respond.PER_IP.reset()
+    yield

@@ -197,7 +197,8 @@ def test_override_approves_with_reason(client):
     run_id = run(client, OVERBILL)
     assert review(client, run_id, action="override").status_code == 422  # reason required
 
-    r = review(client, run_id, "AP clerk", action="override", reason="Extra reams agreed by phone with procurement")
+    r = review(client, run_id, "AP clerk", action="override", reason="Extra reams agreed by phone with procurement",
+               confirm_over_budget=True)
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "approved"
     d = detail(client, run_id)
@@ -207,6 +208,50 @@ def test_override_approves_with_reason(client):
     (rev,) = d["reviews"]
     assert rev["action"] == "override" and rev["field_changes"]["decision"] == {
         "label": "Decision", "before": "Hold", "after": "Approve"}
+
+
+def test_override_past_the_po_needs_confirmation(client):
+    """Sample 04 takes PO-2026-101 ₹23,600 (1,41,600 vs 1,18,000 left) and 100 reams (2,100 of 2,000) over."""
+    run_id = run(client, OVERBILL)
+    r = review(client, run_id, "AP clerk", action="override", reason="Extra reams agreed")
+    assert r.status_code == 409
+    body = r.json()
+    assert "takes PO-2026-101 ₹23,600 and 100 reams over" in body["detail"]
+    assert body["state"] == "over_budget"
+    assert body["overage"]["amount_paise"] == 2_360_000 and body["overage"]["lines"][0]["over_qty"] == 100
+    d = detail(client, run_id)
+    assert d["status"] == "needs_review" and d["reviews"] == []  # nothing changed
+
+    r = review(client, run_id, "AP clerk", action="override", reason="Extra reams agreed", confirm_over_budget=True)
+    assert r.status_code == 200, r.text
+    (rev,) = detail(client, run_id)["reviews"]
+    over = rev["field_changes"]["over_budget"]
+    assert over["confirmed"] is True and over["amount_paise"] == 2_360_000
+    assert over["text"] == "₹23,600 and 100 reams" and over["po_id"] == "PO-2026-101"
+
+
+def test_override_within_the_po_needs_no_confirmation(client):
+    """Sample 08 is held for its GST split only; its total fits PO-2026-116."""
+    run_id = run(client, "08_extra_wrong_split_brighttech.pdf")
+    r = review(client, run_id, "AP clerk", action="override", reason="GST split fixed on the credit side")
+    assert r.status_code == 200, r.text
+    assert "over_budget" not in detail(client, run_id)["reviews"][0]["field_changes"]
+
+
+def test_override_sees_an_approval_made_since_the_hold(client):
+    """The balance is read when the override happens, not when the run was held."""
+    from app.db import SessionLocal
+    from app.models import Invoice as Inv
+
+    run_id = run(client, "08_extra_wrong_split_brighttech.pdf")  # ₹82,600 on PO-2026-116
+    with SessionLocal() as db:
+        row = db.get(Inv, run_id)
+        other = Inv(run_id="RUN-OTHER", po_id=row.po_id, decision="Approve", status="approved", invoice_no="X-1",
+                    total_paise=10**10)  # something approved against the same PO meanwhile uses it all up
+        db.add(other)
+        db.commit()
+    r = review(client, run_id, "AP clerk", action="override", reason="fine")
+    assert r.status_code == 409 and r.json()["state"] == "over_budget"
 
 
 @pytest.mark.parametrize("role", [None, "AP clerk", "Procurement"])

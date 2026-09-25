@@ -243,7 +243,7 @@ export type SentEmail = {
 export type ReviewAction =
   | { action: "confirm"; fields: Record<string, string | number | null> }
   | { action: "pick_po"; po_id: string }
-  | { action: "override"; reason: string }
+  | { action: "override"; reason: string; confirm_over_budget?: boolean }
   | { action: "send_to_vendor"; reasons: string[]; note: string; subject: string; body: string }
   | { action: "reject"; reason: string }
   | { action: "send_reminder" }

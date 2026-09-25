@@ -169,13 +169,32 @@ def test_samples_list(client):
     assert all(s["story"] for s in samples)
 
 
-def test_daily_cap_returns_429(client, monkeypatch):
+def new_pdf(n: int) -> dict:
+    """A file with no cached reading: the AI would have to read it (offline here, so it's held for a person)."""
+    return {"file": (f"new{n}.pdf", f"%PDF-1.4 new file {n}\n".encode(), "application/pdf")}
+
+
+def test_daily_cap_counts_only_files_the_ai_must_read(client, monkeypatch):
     monkeypatch.setattr(settings, "MAX_RUNS_PER_DAY", 2)
-    post_sample(client, "01_happy_deccan.pdf")
-    post_sample(client, "02_happy_brighttech_scan.pdf")
-    r = client.post("/api/runs", json={"sample_name": "03_edge_inferred_po_acme.pdf"})
+    for n in range(2):
+        assert client.post("/api/runs", files=new_pdf(n)).status_code == 202
+    r = client.post("/api/runs", files=new_pdf(3))
     assert r.status_code == 429
-    assert "2 invoices a day" in r.json()["detail"]
+    assert "up to 2 new invoices a day" in r.json()["detail"] and "sample invoices" in r.json()["detail"]
+    # Samples (cached readings) still go through once the cap is reached, and never count.
+    post_sample(client, "01_happy_deccan.pdf")
+    post_sample(client, "03_edge_inferred_po_acme.pdf")
+    with SessionLocal() as db:
+        assert run_service.runs_today(db) == 2
+
+
+def test_samples_never_count_towards_the_cap(client, monkeypatch):
+    monkeypatch.setattr(settings, "MAX_RUNS_PER_DAY", 1)
+    for e in EXPECTED[:4]:
+        post_sample(client, e["file"])
+    with SessionLocal() as db:
+        assert run_service.runs_today(db) == 0
+    assert client.post("/api/runs", files=new_pdf(1)).status_code == 202
 
 
 def test_bad_requests(client):

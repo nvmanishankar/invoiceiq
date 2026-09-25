@@ -30,7 +30,7 @@ PO_STAGE = 5
 AMOUNTS_STAGE = 6
 
 # `pytest -q` in backend/, including the test that checks this number (tests/test_how_it_works.py).
-AUTOMATED_TESTS = 378
+AUTOMATED_TESTS = 409
 
 # Who may do what, as the server enforces it. `rule`:
 #   anyone       no role check
@@ -41,7 +41,8 @@ AUTOMATED_TESTS = 378
 #   nobody       refused for every role (review.py / alerts.py: 409)
 PERMISSIONS = [
     {"key": "upload", "area": "Process", "action": "Upload an invoice or run a sample", "rule": "anyone",
-     "why": f"Anyone can start a run, up to {settings.MAX_RUNS_PER_DAY} a day for the whole demo.",
+     "why": f"Anyone can start a run. New files the AI has to read are capped at {settings.MAX_RUNS_PER_DAY} a day "
+            "for the whole demo; samples and files read before don't count.",
      "where": "routers/runs.py"},
     {"key": "confirm", "area": "Review", "action": "Confirm and continue", "rule": "anyone",
      "why": "Correcting a misread field isn't limited by role.", "where": "services/review.py"},

@@ -69,7 +69,8 @@ def test_overridden_run_is_not_touchless(db, ran):
 
 
 def test_overridden_overbilling_is_no_longer_protected(db, ran):
-    review_service.apply(db, ran["04"], "override", "AP clerk", reason="PO amendment on the way")
+    review_service.apply(db, ran["04"], "override", "AP clerk", reason="PO amendment on the way",
+                         confirm_over_budget=True)
     db.commit()
     mp = compute(db)["kpis"]["money_protected"]
     assert mp["paise"] == PROTECTED["05"] + PROTECTED["06"]

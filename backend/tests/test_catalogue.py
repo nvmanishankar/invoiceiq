@@ -88,7 +88,9 @@ def test_outcomes_audiences_and_fraud_match_the_code():
                 assert c["also"], f"{code} at {call['where']} picks its severity at run time; catalogue needs `also`"
             if call["audience"] is not None:
                 assert set(call["audience"]) <= set(c["alerted"]), f"{code} at {call['where']}: {call['audience']}"
-            assert call["fraud"] == c["fraud"], f"{code} at {call['where']}: fraud flag differs"
+            # An info note under a fraud case (4.7: no bank details on the invoice) isn't itself a fraud finding.
+            assert call["fraud"] == c["fraud"] or call["severity"] == "info", \
+                f"{code} at {call['where']}: fraud flag differs"
         audiences = set().union(*(set(call["audience"] or []) for call in calls))
         assert set(c["alerted"]) <= audiences, f"{code}: catalogue alerts {c['alerted']}, code alerts {audiences}"
 

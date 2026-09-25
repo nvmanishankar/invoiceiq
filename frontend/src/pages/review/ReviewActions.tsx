@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react"
 import { useMutation } from "@tanstack/react-query"
 
-import { reviewRun } from "@/api"
+import { ApiError, reviewRun } from "@/api"
 import { AccordionItem } from "@/components/ds/Accordion"
 import { inputCls } from "@/components/ds/Field"
 import { PillButton } from "@/components/ds/PillButton"
@@ -62,12 +62,14 @@ export function ReviewActions({
     onSuccess: () => onDone(run.run_id),
   })
   const busy = act.isPending
+  // 409 "over_budget": the override would take the PO past its balance or quantity; the form asks to confirm.
+  const overBudget = act.error instanceof ApiError && act.error.state === "over_budget" ? act.error.message : null
   const nChanges = Object.keys(changes).length
   const hasPoStage = run.stages.some((s) => s.order === 5)
 
   return (
     <div className="flex flex-col gap-1">
-      {act.error && (
+      {act.error && !overBudget && (
         <div role="alert" className="mb-3 rounded-card border border-reject/30 bg-reject-bg p-4 text-[15px] text-ink">
           {act.error.message}
         </div>
@@ -91,7 +93,8 @@ export function ReviewActions({
         </Action>
       )}
 
-      <Action title="Override and approve" note={fraud ? "Finance only on this invoice" : "Reason required"}>
+      <Action title="Override and approve" note={fraud ? "Finance only on this invoice" : "Reason required"}
+        open={!!overBudget}>
         <ReasonForm
           label="Why approve anyway?"
           placeholder="e.g. Extra 100 reams agreed with Procurement by email on 17 Sep"
@@ -100,7 +103,9 @@ export function ReviewActions({
             ? "This invoice has a fraud finding. Only Finance can clear it, after calling the vendor on the number on file. Switch the role to Finance to continue."
             : null}
           button="Approve invoice"
-          onSubmit={(reason) => act.mutate({ action: "override", reason })}
+          warning={overBudget}
+          confirmLabel="I understand this takes the PO over, and approve it anyway"
+          onSubmit={(reason, confirmed) => act.mutate({ action: "override", reason, confirm_over_budget: confirmed })}
         />
       </Action>
 
@@ -165,22 +170,26 @@ const Blocked = ({ children }: { children: ReactNode }) => (
   <p className="rounded-input border border-reject/30 bg-reject-bg px-4 py-3 text-[14px] leading-relaxed text-ink">{children}</p>
 )
 
-function ReasonForm({ label, placeholder, button, busy, blocked = null, onSubmit }: {
+function ReasonForm({ label, placeholder, button, busy, blocked = null, warning = null, confirmLabel, onSubmit }: {
   label: string
   placeholder: string
   button: string
   busy: boolean
   blocked?: string | null
-  onSubmit: (reason: string) => void
+  /** A server warning that needs an explicit tick before the action can go ahead. */
+  warning?: string | null
+  confirmLabel?: string
+  onSubmit: (reason: string, confirmed: boolean) => void
 }) {
   const [reason, setReason] = useState("")
+  const [confirmed, setConfirmed] = useState(false)
   if (blocked) return <Blocked>{blocked}</Blocked>
   return (
     <form
       className="flex flex-col gap-3"
       onSubmit={(e) => {
         e.preventDefault()
-        if (reason.trim()) onSubmit(reason.trim())
+        if (reason.trim() && (!warning || confirmed)) onSubmit(reason.trim(), !!warning && confirmed)
       }}
     >
       <label className="flex flex-col gap-1.5">
@@ -188,8 +197,17 @@ function ReasonForm({ label, placeholder, button, busy, blocked = null, onSubmit
         <textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder={placeholder} rows={2}
           className={cn(inputCls, "h-auto py-3 leading-relaxed")} />
       </label>
+      {warning && (
+        <div role="alert" className="flex flex-col gap-3 rounded-input border border-hold/40 bg-hold-bg px-4 py-3 text-[14px] leading-relaxed text-ink">
+          <p>{warning}</p>
+          <label className="flex items-start gap-2">
+            <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} className="mt-1" />
+            <span>{confirmLabel ?? "I understand, and want to go ahead"}</span>
+          </label>
+        </div>
+      )}
       <Row>
-        <PillButton type="submit" disabled={busy || !reason.trim()}>{button}</PillButton>
+        <PillButton type="submit" disabled={busy || !reason.trim() || (!!warning && !confirmed)}>{button}</PillButton>
       </Row>
     </form>
   )
